@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
 import { computeTryoutComposites } from './composite';
-import { SKILLS, SKILL_SHORT_LABELS } from './skills';
+import { POSITION_SHORT_LABELS, SKILLS, SKILL_SHORT_LABELS } from './skills';
 
 export function RankingsTab() {
   const rows = useLiveQuery(async () => {
@@ -25,6 +25,7 @@ export function RankingsTab() {
         <thead>
           <tr className="border-b border-gray-200 text-left text-gray-500">
             <th className="py-2 pr-3 sticky left-0 bg-gray-50">Player</th>
+            <th className="py-2 px-2 text-left whitespace-nowrap">Positions</th>
             <th className="py-2 px-2 text-center">Avg</th>
             <th className="py-2 px-2 text-center">#</th>
             {SKILLS.map((skill) => (
@@ -42,6 +43,9 @@ export function RankingsTab() {
                 {player.jerseyNumber != null ? (
                   <span className="text-gray-400"> #{player.jerseyNumber}</span>
                 ) : null}
+              </td>
+              <td className="py-2 px-2 text-gray-500 whitespace-nowrap">
+                {player.positions.map((p) => POSITION_SHORT_LABELS[p]).join(', ') || '—'}
               </td>
               <td className="py-2 px-2 text-center font-semibold text-gray-900">
                 {composite.overallAvg != null ? composite.overallAvg.toFixed(1) : '—'}

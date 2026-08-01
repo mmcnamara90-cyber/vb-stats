@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import type { Player, Position } from '../../types';
-
-const POSITIONS: Position[] = ['OH', 'MB', 'S', 'OPP', 'L', 'DS'];
+import { POSITIONS, POSITION_LABELS } from '../tryouts/skills';
 
 export interface PlayerFormValues {
   firstName: string;
   lastName: string;
   gradYear: number;
-  primaryPosition: Position;
-  secondaryPosition?: Position;
+  positions: Position[];
   jerseyNumber?: number;
   contactPhone?: string;
   contactEmail?: string;
@@ -21,8 +19,7 @@ function toFormValues(player?: Player): PlayerFormValues {
     firstName: player?.firstName ?? '',
     lastName: player?.lastName ?? '',
     gradYear: player?.gradYear ?? new Date().getFullYear() + 1,
-    primaryPosition: player?.primaryPosition ?? 'OH',
-    secondaryPosition: player?.secondaryPosition,
+    positions: player?.positions ?? [],
     jerseyNumber: player?.jerseyNumber,
     contactPhone: player?.contactPhone ?? '',
     contactEmail: player?.contactEmail ?? '',
@@ -51,6 +48,15 @@ export function PlayerForm({
 
   function update<K extends keyof PlayerFormValues>(key: K, value: PlayerFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }));
+  }
+
+  function togglePosition(pos: Position) {
+    setValues((v) => ({
+      ...v,
+      positions: v.positions.includes(pos)
+        ? v.positions.filter((p) => p !== pos)
+        : [...v.positions, pos],
+    }));
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -116,37 +122,26 @@ export function PlayerForm({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <div>
-            <label className={labelClass}>Primary position</label>
-            <select
-              className={inputClass}
-              value={values.primaryPosition}
-              onChange={(e) => update('primaryPosition', e.target.value as Position)}
-            >
-              {POSITIONS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Secondary position</label>
-            <select
-              className={inputClass}
-              value={values.secondaryPosition ?? ''}
-              onChange={(e) =>
-                update('secondaryPosition', e.target.value ? (e.target.value as Position) : undefined)
-              }
-            >
-              <option value="">None</option>
-              {POSITIONS.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+        <div className="mb-3">
+          <label className={labelClass}>Positions (select all that apply)</label>
+          <div className="flex flex-wrap gap-2">
+            {POSITIONS.map((p) => {
+              const checked = values.positions.includes(p);
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => togglePosition(p)}
+                  className={`min-h-11 px-3 rounded-full border text-sm font-medium ${
+                    checked
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-300'
+                  }`}
+                >
+                  {POSITION_LABELS[p]}
+                </button>
+              );
+            })}
           </div>
         </div>
 

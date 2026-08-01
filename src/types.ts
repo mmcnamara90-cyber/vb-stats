@@ -1,14 +1,17 @@
 // ===== Core entities =====
 
-export type Position = 'OH' | 'MB' | 'S' | 'OPP' | 'L' | 'DS'; // outside, middle, setter, opposite, libero, defensive specialist
+export type Position = 'OH' | 'MB' | 'S' | 'OPP' | 'DS_L'; // outside, middle, setter, opposite, defensive specialist/libero
+
+// Which tryout pool a session belongs to. Upper -> varsity/JV, Lower -> freshman/level 3.
+// Benchmarks are scoped per level since the two pools score very differently.
+export type TryoutLevel = 'upper' | 'lower';
 
 export interface Player {
   id: string;              // uuid
   firstName: string;
   lastName: string;
   gradYear: number;
-  primaryPosition: Position;
-  secondaryPosition?: Position;
+  positions: Position[];   // players can be tried out for more than one position
   jerseyNumber?: number;
   contactPhone?: string;
   contactEmail?: string;
@@ -23,6 +26,7 @@ export interface Session {
   id: string;
   type: SessionType;
   date: string;             // ISO date
+  level?: TryoutLevel;      // for tryout sessions: which pool (upper/lower) this day is scoring
   label?: string;           // e.g. "Tryout Day 2" or "vs. Lakewood"
   notes?: string;           // session-level freeform
 }
@@ -31,6 +35,8 @@ export interface Session {
 export type Skill =
   | 'serve'
   | 'serve_receive'
+  | 'free_ball'
+  | 'down_ball'
   | 'setting'
   | 'hitting'
   | 'blocking'
@@ -38,6 +44,18 @@ export type Skill =
   | 'athleticism'
   | 'volleyball_iq'
   | 'coachability';
+
+// A coach-set (or system-suggested) target score for a position+skill within a
+// tryout level. Manual values always win in the UI — the computed top-10%
+// suggestion is shown alongside but never silently overwrites this row.
+export interface Benchmark {
+  id: string;
+  position: Position;
+  skill: Skill;
+  level: TryoutLevel;
+  manualValue: number;      // 0-3 scale, coach-set target
+  updatedAt: string;        // ISO datetime
+}
 
 // A specific rateable activity within a skill category, e.g. "Line Passing"
 // under serve_receive. Coaches tally 0-3 taps per player per drill; those

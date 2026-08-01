@@ -12,6 +12,7 @@ import type {
   StatEvent,
   Drill,
   PracticePlan,
+  Benchmark,
 } from './types';
 
 const db = new Dexie('VolleyballCoachDB') as Dexie & {
@@ -27,6 +28,7 @@ const db = new Dexie('VolleyballCoachDB') as Dexie & {
   statEvents: EntityTable<StatEvent, 'id'>;
   drills: EntityTable<Drill, 'id'>;
   practicePlans: EntityTable<PracticePlan, 'id'>;
+  benchmarks: EntityTable<Benchmark, 'id'>;
 };
 
 db.version(3).stores({
@@ -43,5 +45,42 @@ db.version(3).stores({
   drills: 'id, name',
   practicePlans: 'id, sessionId',
 });
+
+// v4: players.primaryPosition/secondaryPosition -> players.positions[];
+// L and DS merge into the single DS_L tag; sessions gain a level field;
+// new benchmarks table for per-position/skill/level targets.
+db.version(4)
+  .stores({
+    players: 'id, active, lastName, gradYear, *positions',
+    sessions: 'id, type, date, level',
+    tryoutDrills: 'id, skill, name',
+    playerGroups: 'id, name',
+    drillRuns: 'id, drillId, sessionId',
+    skillScores: 'id, playerId, sessionId, skill, drillId, scoredAt',
+    notes: 'id, playerId, sessionId, createdAt',
+    rosterDecisions: 'id, playerId, tryoutCycleId',
+    lineups: 'id, gameId, setNumber',
+    statEvents: 'id, gameId, setNumber, playerId, statType, timestamp',
+    drills: 'id, name',
+    practicePlans: 'id, sessionId',
+    benchmarks: 'id, position, skill, level',
+  })
+  .upgrade(async (tx) => {
+    const mapPosition = (pos: string) => (pos === 'L' || pos === 'DS' ? 'DS_L' : pos);
+    await tx
+      .table('players')
+      .toCollection()
+      .modify((p: Record<string, unknown>) => {
+        const positions: string[] = [];
+        if (typeof p.primaryPosition === 'string') positions.push(mapPosition(p.primaryPosition));
+        if (typeof p.secondaryPosition === 'string') {
+          const mapped = mapPosition(p.secondaryPosition);
+          if (!positions.includes(mapped)) positions.push(mapped);
+        }
+        p.positions = positions;
+        delete p.primaryPosition;
+        delete p.secondaryPosition;
+      });
+  });
 
 export { db };

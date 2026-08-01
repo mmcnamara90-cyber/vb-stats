@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
-import type { DrillRun, Player, PlayerGroup, Session, SkillScore, TryoutDrill } from '../../types';
-import { SKILL_LABELS } from './skills';
+import type { Benchmark, DrillRun, Player, PlayerGroup, Session, SkillScore, TryoutDrill } from '../../types';
+import { benchmarkKey, computeHighScores } from './composite';
+import { POSITION_LABELS, SKILL_LABELS } from './skills';
 
 const checkboxClass = (checked: boolean) =>
   `h-5 w-5 rounded border flex items-center justify-center shrink-0 text-xs ${
@@ -18,7 +19,7 @@ export function ScoreTab({ session }: { session: Session | undefined }) {
   }, []);
 
   if (activeRun) {
-    return <ActiveDrillRun run={activeRun} drills={drills} />;
+    return <ActiveDrillRun run={activeRun} drills={drills} session={session} />;
   }
   return <StartDrillForm session={session} drills={drills} />;
 }
@@ -185,9 +186,18 @@ function StartDrillForm({
   );
 }
 
-function ActiveDrillRun({ run, drills }: { run: DrillRun; drills: TryoutDrill[] | undefined }) {
+function ActiveDrillRun({
+  run,
+  drills,
+  session,
+}: {
+  run: DrillRun;
+  drills: TryoutDrill[] | undefined;
+  session: Session | undefined;
+}) {
   const drill = drills?.find((d) => d.id === run.drillId);
   const playerIdsKey = run.playerIds.join(',');
+  const level = session?.level;
 
   const players = useLiveQuery(async () => {
     const rows = await Promise.all(run.playerIds.map((id) => db.players.get(id)));
@@ -195,6 +205,15 @@ function ActiveDrillRun({ run, drills }: { run: DrillRun; drills: TryoutDrill[] 
       .filter((p): p is Player => !!p)
       .sort((a, b) => a.lastName.localeCompare(b.lastName));
   }, [playerIdsKey]);
+
+  const benchmarks = useLiveQuery(async () => {
+    if (!level) return [] as Benchmark[];
+    return db.benchmarks.where('level').equals(level).toArray();
+  }, [level]);
+
+  const highScores = useLiveQuery(() => computeHighScores(), []);
+
+  const benchmarksByKey = new Map((benchmarks ?? []).map((b) => [benchmarkKey(b.level, b.position, b.skill), b]));
 
   const scoresByPlayer = useLiveQuery(async () => {
     const tryoutSessions = await db.sessions.where('type').equals('tryout').toArray();
@@ -259,9 +278,28 @@ function ActiveDrillRun({ run, drills }: { run: DrillRun; drills: TryoutDrill[] 
           const avg = entries.length
             ? entries.reduce((a, e) => a + e.score, 0) / entries.length
             : null;
+
+          const targets =
+            drill && level
+              ? player.positions
+                  .map((pos) => ({
+                    pos,
+                    benchmark: benchmarksByKey.get(benchmarkKey(level, pos, drill.skill)),
+                  }))
+                  .filter((t): t is { pos: typeof t.pos; benchmark: Benchmark } => !!t.benchmark)
+              : [];
+
+          const bestForPlayer =
+            drill && level
+              ? player.positions
+                  .map((pos) => highScores?.get(benchmarkKey(level, pos, drill.skill)))
+                  .filter((h): h is NonNullable<typeof h> => !!h)
+                  .sort((a, b) => b.value - a.value)[0]
+              : undefined;
+
           return (
             <li key={player.id} className="rounded-lg border border-gray-200 p-3">
-              <div className="flex items-center justify-between mb-2 gap-2">
+              <div className="flex items-center justify-between mb-1 gap-2">
                 <span className="font-medium text-gray-900">
                   {player.firstName} {player.lastName}
                   {player.jerseyNumber != null && (
@@ -272,6 +310,23 @@ function ActiveDrillRun({ run, drills }: { run: DrillRun; drills: TryoutDrill[] 
                   {avg != null ? `Avg ${avg.toFixed(1)} (${entries.length})` : 'No taps yet'}
                 </span>
               </div>
+
+              {(targets.length > 0 || bestForPlayer) && (
+                <p className="text-xs text-gray-500 mb-2">
+                  {targets.length > 0 && (
+                    <>
+                      Target:{' '}
+                      {targets
+                        .map((t) => `${t.benchmark.manualValue.toFixed(1)} (${POSITION_LABELS[t.pos]})`)
+                        .join(' · ')}
+                    </>
+                  )}
+                  {targets.length > 0 && bestForPlayer && ' — '}
+                  {bestForPlayer && (
+                    <>Best this year: {bestForPlayer.value.toFixed(1)} ({bestForPlayer.playerName})</>
+                  )}
+                </p>
+              )}
 
               {entries.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-2">

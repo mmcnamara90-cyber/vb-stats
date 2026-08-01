@@ -328,21 +328,22 @@ function ActiveDrillRun({
                 </p>
               )}
 
-              {entries.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {entries.map((e) => (
-                    <button
-                      key={e.id}
-                      type="button"
-                      onClick={() => removeTap(e.id)}
-                      title="Tap to remove"
-                      className="min-h-11 min-w-11 px-2 rounded bg-gray-100 text-gray-700 text-sm font-medium active:bg-red-100"
-                    >
-                      {e.score}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Always rendered (even with 0 taps) and non-wrapping so this row
+                  reserves a constant height — the card can't resize as taps
+                  are recorded. */}
+              <div className="flex items-center gap-1 mb-2 min-h-11 overflow-x-auto">
+                {entries.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => removeTap(e.id)}
+                    title="Tap to remove"
+                    className="min-h-11 min-w-11 shrink-0 px-2 rounded bg-gray-100 text-gray-700 text-sm font-medium active:bg-red-100"
+                  >
+                    {e.score}
+                  </button>
+                ))}
+              </div>
 
               <div className="grid grid-cols-4 gap-2">
                 {([0, 1, 2, 3] as const).map((n) => (
@@ -350,7 +351,7 @@ function ActiveDrillRun({
                     key={n}
                     type="button"
                     onClick={() => addTap(player.id, n)}
-                    className="min-h-11 rounded-lg text-base font-semibold border bg-white text-gray-700 border-gray-300 active:bg-blue-600 active:text-white"
+                    className="min-h-16 sm:min-h-20 rounded-xl text-2xl font-bold border-2 bg-white text-gray-700 border-gray-300 active:bg-blue-600 active:text-white active:border-blue-600"
                   >
                     {n}
                   </button>

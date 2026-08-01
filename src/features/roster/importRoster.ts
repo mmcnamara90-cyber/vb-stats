@@ -1,4 +1,5 @@
 import type { Player, Position } from '../../types';
+import { gradeToGradYear } from '../../lib/grade';
 
 // Minimal RFC4180-ish CSV parser: handles quoted fields, embedded commas,
 // embedded newlines, and doubled-quote escaping (Airtable exports use all of these).
@@ -81,16 +82,12 @@ function mapPositions(raw: string): Position[] {
   return positions;
 }
 
-// 12th grade graduates in the spring of the *next* calendar year relative to
-// the school year's start (Jul-Dec = same year, Jan-Jun = previous year).
-function gradeToGradYear(gradeRaw: string, today = new Date()): number | null {
+function parseGradeToGradYear(gradeRaw: string): number | null {
   const match = gradeRaw.match(/(\d+)/);
   if (!match) return null;
   const gradeNum = Number(match[1]);
   if (gradeNum < 1 || gradeNum > 12) return null;
-  const schoolYearStartYear = today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1;
-  const twelfthGradYear = schoolYearStartYear + 1;
-  return twelfthGradYear + (12 - gradeNum);
+  return gradeToGradYear(gradeNum);
 }
 
 export interface ImportRow {
@@ -117,7 +114,7 @@ export function buildImportRows(records: Record<string, string>[]): ImportRow[] 
     result.push({
       firstName,
       lastName,
-      gradYear: gradeToGradYear(grade),
+      gradYear: parseGradeToGradYear(grade),
       positions: mapPositions(rec['Position'] ?? ''),
       contactPhone: (rec['Player Phone #'] ?? '').trim() || undefined,
       contactEmail: (rec['Player Email'] ?? '').trim() || undefined,

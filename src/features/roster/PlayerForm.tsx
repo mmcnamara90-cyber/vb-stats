@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Player, Position } from '../../types';
 import { POSITIONS, POSITION_LABELS } from '../tryouts/skills';
+import { GRADE_OPTIONS, gradeLabel, gradeToGradYear, gradYearToGrade } from '../../lib/grade';
 
 export interface PlayerFormValues {
   firstName: string;
@@ -18,7 +19,7 @@ function toFormValues(player?: Player): PlayerFormValues {
   return {
     firstName: player?.firstName ?? '',
     lastName: player?.lastName ?? '',
-    gradYear: player?.gradYear ?? new Date().getFullYear() + 1,
+    gradYear: player?.gradYear ?? gradeToGradYear(9),
     positions: player?.positions ?? [],
     jerseyNumber: player?.jerseyNumber,
     contactPhone: player?.contactPhone ?? '',
@@ -100,14 +101,18 @@ export function PlayerForm({
 
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
-            <label className={labelClass}>Grad year</label>
-            <input
-              type="number"
+            <label className={labelClass}>Grade</label>
+            <select
               className={inputClass}
-              value={values.gradYear}
-              onChange={(e) => update('gradYear', Number(e.target.value))}
-              required
-            />
+              value={Math.min(12, Math.max(9, gradYearToGrade(values.gradYear)))}
+              onChange={(e) => update('gradYear', gradeToGradYear(Number(e.target.value)))}
+            >
+              {GRADE_OPTIONS.map((g) => (
+                <option key={g} value={g}>
+                  {gradeLabel(g)}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={labelClass}>Jersey #</label>

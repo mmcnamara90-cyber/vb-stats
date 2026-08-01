@@ -5,6 +5,7 @@ import type { Player } from '../../types';
 import { PlayerForm, type PlayerFormValues } from './PlayerForm';
 import { ImportRosterModal } from './ImportRosterModal';
 import { POSITION_SHORT_LABELS } from '../tryouts/skills';
+import { gradeLabel, gradYearToGrade } from '../../lib/grade';
 
 export function RosterScreen() {
   const [showActiveOnly, setShowActiveOnly] = useState(true);
@@ -120,7 +121,7 @@ export function RosterScreen() {
                 {player.positions.length > 0
                   ? player.positions.map((p) => POSITION_SHORT_LABELS[p]).join('/')
                   : '—'}{' '}
-                · {player.gradYear}
+                · {gradeLabel(gradYearToGrade(player.gradYear))}
               </span>
             </button>
           </li>

@@ -3,6 +3,7 @@ import { db } from '../../db';
 import type { Player } from '../../types';
 import { buildImportRows, parseCsvObjects, planImport, type ImportPlan } from './importRoster';
 import { POSITION_LABELS } from '../tryouts/skills';
+import { gradeLabel, gradYearToGrade } from '../../lib/grade';
 
 export function ImportRosterModal({ onClose }: { onClose: () => void }) {
   const [fileName, setFileName] = useState<string | null>(null);
@@ -103,7 +104,7 @@ export function ImportRosterModal({ onClose }: { onClose: () => void }) {
                     </span>
                     <span className="text-gray-500 text-xs text-right">
                       {row.positions.map((p) => POSITION_LABELS[p]).join(', ') || 'no position'} ·{' '}
-                      {row.gradYear ?? '?'}
+                      {row.gradYear != null ? gradeLabel(gradYearToGrade(row.gradYear)) : '?'}
                     </span>
                   </li>
                 ))}

@@ -1,0 +1,310 @@
+import { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../db';
+import type { DrillRun, Player, PlayerGroup, Session, SkillScore, TryoutDrill } from '../../types';
+import { SKILL_LABELS } from './skills';
+
+const checkboxClass = (checked: boolean) =>
+  `h-5 w-5 rounded border flex items-center justify-center shrink-0 text-xs ${
+    checked ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300'
+  }`;
+
+export function ScoreTab({ session }: { session: Session | undefined }) {
+  const drills = useLiveQuery(() => db.tryoutDrills.orderBy('name').toArray(), []);
+
+  const activeRun = useLiveQuery(async () => {
+    const all = await db.drillRuns.toArray();
+    return all.find((r) => !r.endedAt);
+  }, []);
+
+  if (activeRun) {
+    return <ActiveDrillRun run={activeRun} drills={drills} />;
+  }
+  return <StartDrillForm session={session} drills={drills} />;
+}
+
+function StartDrillForm({
+  session,
+  drills,
+}: {
+  session: Session | undefined;
+  drills: TryoutDrill[] | undefined;
+}) {
+  const [drillId, setDrillId] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const activePlayers = useLiveQuery(async () => {
+    const all = await db.players.orderBy('lastName').toArray();
+    return all.filter((p) => p.active);
+  }, []);
+
+  const groups = useLiveQuery(() => db.playerGroups.orderBy('name').toArray(), []);
+
+  const tags = useLiveQuery(async () => {
+    const all = await db.players.toArray();
+    const set = new Set<string>();
+    for (const p of all) if (p.active) for (const t of p.tags) set.add(t);
+    return [...set].sort();
+  }, []);
+
+  function togglePlayer(playerId: string) {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(playerId)) next.delete(playerId);
+      else next.add(playerId);
+      return next;
+    });
+  }
+
+  function selectByTag(tag: string) {
+    setSelected((s) => {
+      const next = new Set(s);
+      for (const p of activePlayers ?? []) if (p.tags.includes(tag)) next.add(p.id);
+      return next;
+    });
+  }
+
+  function selectByGroup(group: PlayerGroup) {
+    setSelected((s) => {
+      const next = new Set(s);
+      for (const id of group.playerIds) next.add(id);
+      return next;
+    });
+  }
+
+  async function startDrill() {
+    if (!session || !drillId || selected.size === 0) return;
+    const run: DrillRun = {
+      id: crypto.randomUUID(),
+      drillId,
+      sessionId: session.id,
+      playerIds: [...selected],
+      startedAt: new Date().toISOString(),
+    };
+    await db.drillRuns.add(run);
+  }
+
+  return (
+    <div>
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-1">Drill</label>
+        <select
+          className="min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-blue-500 focus:outline-none"
+          value={drillId}
+          onChange={(e) => setDrillId(e.target.value)}
+        >
+          <option value="">Select a drill…</option>
+          {drills?.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name} ({SKILL_LABELS[d.skill]})
+            </option>
+          ))}
+        </select>
+        {drills !== undefined && drills.length === 0 && (
+          <p className="text-sm text-gray-500 mt-1">No drills yet — add one in the Drills tab.</p>
+        )}
+      </div>
+
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-gray-700">Players ({selected.size} selected)</label>
+          {selected.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              className="min-h-11 px-2 text-sm text-blue-600 font-medium"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {groups !== undefined && groups.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {groups.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => selectByGroup(g)}
+                className="min-h-11 px-3 rounded-full border border-blue-300 bg-blue-50 text-blue-700 text-sm font-medium"
+              >
+                + {g.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {tags !== undefined && tags.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {tags.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => selectByTag(t)}
+                className="min-h-11 px-3 rounded-full border border-gray-300 bg-white text-gray-700 text-sm font-medium"
+              >
+                + {t}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 overflow-hidden">
+          {activePlayers?.map((p) => {
+            const checked = selected.has(p.id);
+            return (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => togglePlayer(p.id)}
+                  className={`w-full min-h-11 flex items-center gap-3 px-4 py-2 text-left ${
+                    checked ? 'bg-blue-50' : ''
+                  }`}
+                >
+                  <span className={checkboxClass(checked)}>{checked ? '✓' : ''}</span>
+                  <span className="font-medium text-gray-900">
+                    {p.firstName} {p.lastName}
+                    {p.jerseyNumber != null && <span className="text-gray-400"> #{p.jerseyNumber}</span>}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <button
+        type="button"
+        onClick={startDrill}
+        disabled={!session || !drillId || selected.size === 0}
+        className="min-h-11 w-full rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700 disabled:opacity-50"
+      >
+        Start Drill
+      </button>
+    </div>
+  );
+}
+
+function ActiveDrillRun({ run, drills }: { run: DrillRun; drills: TryoutDrill[] | undefined }) {
+  const drill = drills?.find((d) => d.id === run.drillId);
+  const playerIdsKey = run.playerIds.join(',');
+
+  const players = useLiveQuery(async () => {
+    const rows = await Promise.all(run.playerIds.map((id) => db.players.get(id)));
+    return rows
+      .filter((p): p is Player => !!p)
+      .sort((a, b) => a.lastName.localeCompare(b.lastName));
+  }, [playerIdsKey]);
+
+  const scoresByPlayer = useLiveQuery(async () => {
+    const tryoutSessions = await db.sessions.where('type').equals('tryout').toArray();
+    const sessionIds = new Set(tryoutSessions.map((s) => s.id));
+    const rows = await db.skillScores.where('drillId').equals(run.drillId).toArray();
+    const relevant = rows
+      .filter((r) => sessionIds.has(r.sessionId) && run.playerIds.includes(r.playerId))
+      .sort((a, b) => a.scoredAt.localeCompare(b.scoredAt));
+    const map = new Map<string, SkillScore[]>();
+    for (const row of relevant) {
+      const list = map.get(row.playerId) ?? [];
+      list.push(row);
+      map.set(row.playerId, list);
+    }
+    return map;
+  }, [run.id, run.drillId, playerIdsKey]);
+
+  async function addTap(playerId: string, value: 0 | 1 | 2 | 3) {
+    if (!drill) return;
+    const row: SkillScore = {
+      id: crypto.randomUUID(),
+      playerId,
+      sessionId: run.sessionId,
+      drillId: run.drillId,
+      runId: run.id,
+      skill: drill.skill,
+      score: value,
+      scoredAt: new Date().toISOString(),
+    };
+    await db.skillScores.add(row);
+  }
+
+  async function removeTap(scoreId: string) {
+    await db.skillScores.delete(scoreId);
+  }
+
+  async function endDrill() {
+    await db.drillRuns.update(run.id, { endedAt: new Date().toISOString() });
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4 gap-2">
+        <div>
+          <p className="font-semibold text-gray-900">{drill?.name ?? 'Drill'}</p>
+          <p className="text-sm text-gray-500">
+            {drill ? SKILL_LABELS[drill.skill] : ''} · {run.playerIds.length} players
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={endDrill}
+          className="min-h-11 px-4 rounded-lg bg-red-600 text-white text-base font-medium active:bg-red-700 shrink-0"
+        >
+          End Drill
+        </button>
+      </div>
+
+      <ul className="space-y-3">
+        {players?.map((player) => {
+          const entries = scoresByPlayer?.get(player.id) ?? [];
+          const avg = entries.length
+            ? entries.reduce((a, e) => a + e.score, 0) / entries.length
+            : null;
+          return (
+            <li key={player.id} className="rounded-lg border border-gray-200 p-3">
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <span className="font-medium text-gray-900">
+                  {player.firstName} {player.lastName}
+                  {player.jerseyNumber != null && (
+                    <span className="text-gray-400"> #{player.jerseyNumber}</span>
+                  )}
+                </span>
+                <span className="text-sm text-gray-500 shrink-0">
+                  {avg != null ? `Avg ${avg.toFixed(1)} (${entries.length})` : 'No taps yet'}
+                </span>
+              </div>
+
+              {entries.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {entries.map((e) => (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => removeTap(e.id)}
+                      title="Tap to remove"
+                      className="min-h-11 min-w-11 px-2 rounded bg-gray-100 text-gray-700 text-sm font-medium active:bg-red-100"
+                    >
+                      {e.score}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-4 gap-2">
+                {([0, 1, 2, 3] as const).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => addTap(player.id, n)}
+                    className="min-h-11 rounded-lg text-base font-semibold border bg-white text-gray-700 border-gray-300 active:bg-blue-600 active:text-white"
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}

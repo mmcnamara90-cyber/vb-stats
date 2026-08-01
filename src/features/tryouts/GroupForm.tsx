@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
 import type { PlayerGroup } from '../../types';
+import { PositionBadges } from './PositionBadges';
 
 export interface GroupFormValues {
   name: string;
@@ -81,8 +82,11 @@ export function GroupForm({
                     >
                       {checked ? '✓' : ''}
                     </span>
-                    <span className="font-medium text-gray-900">
-                      {p.firstName} {p.lastName}
+                    <span className="flex items-center gap-2 flex-wrap min-w-0">
+                      <span className="font-medium text-gray-900">
+                        {p.firstName} {p.lastName}
+                      </span>
+                      <PositionBadges positions={p.positions} />
                     </span>
                   </button>
                 </li>

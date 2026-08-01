@@ -60,6 +60,15 @@ export const POSITION_SHORT_LABELS: Record<Position, string> = {
   DS_L: 'DS/L',
 };
 
+// Pastel badge colors, one distinct hue per position.
+export const POSITION_BADGE_CLASSES: Record<Position, string> = {
+  OH: 'bg-sky-100 text-sky-700',
+  MB: 'bg-emerald-100 text-emerald-700',
+  S: 'bg-violet-100 text-violet-700',
+  OPP: 'bg-amber-100 text-amber-700',
+  DS_L: 'bg-rose-100 text-rose-700',
+};
+
 export const TRYOUT_LEVELS: TryoutLevel[] = ['upper', 'lower'];
 
 export const TRYOUT_LEVEL_LABELS: Record<TryoutLevel, string> = {

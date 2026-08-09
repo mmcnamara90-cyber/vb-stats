@@ -2,15 +2,36 @@ import { useState } from 'react';
 import { RosterScreen } from './features/roster/RosterScreen';
 import { TryoutsScreen } from './features/tryouts/TryoutsScreen';
 import { RosterBuilderScreen } from './features/tryouts/RosterBuilderScreen';
+import { LoginScreen } from './features/auth/LoginScreen';
+import { clearStoredTeam, getStoredTeam, setStoredTeam } from './lib/auth';
+import type { Team } from './types';
 
 type Tab = 'roster' | 'tryouts' | 'roster_builder';
 
 function App() {
-  const [tab, setTab] = useState<Tab>('roster');
+  const [team, setTeam] = useState<Team | null>(() => getStoredTeam());
+  const [tab, setTab] = useState<Tab>('roster_builder');
+
+  if (!team) {
+    return (
+      <LoginScreen
+        onLogin={(t) => {
+          setStoredTeam(t);
+          setTeam(t);
+          setTab('roster_builder');
+        }}
+      />
+    );
+  }
+
+  function handleLogout() {
+    clearStoredTeam();
+    setTeam(null);
+  }
 
   return (
     <div className="min-h-svh flex flex-col bg-gray-50">
-      <nav className="flex border-b border-gray-200 bg-white sticky top-0 z-10">
+      <nav className="flex items-center border-b border-gray-200 bg-white sticky top-0 z-10">
         <button
           onClick={() => setTab('roster')}
           className={`flex-1 min-h-11 text-base font-medium ${
@@ -35,12 +56,19 @@ function App() {
         >
           Roster Builder
         </button>
+        <button
+          onClick={handleLogout}
+          title="Log out"
+          className="min-h-11 px-3 text-sm font-medium text-gray-400"
+        >
+          Log out
+        </button>
       </nav>
 
       <main className="flex-1">
         {tab === 'roster' && <RosterScreen />}
         {tab === 'tryouts' && <TryoutsScreen />}
-        {tab === 'roster_builder' && <RosterBuilderScreen />}
+        {tab === 'roster_builder' && <RosterBuilderScreen initialTeam={team} />}
       </main>
     </div>
   );

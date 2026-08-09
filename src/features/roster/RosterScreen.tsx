@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db';
+import { supabase } from '../../lib/supabaseClient';
+import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Player } from '../../types';
 import { PlayerForm, type PlayerFormValues } from './PlayerForm';
 import { ImportRosterModal } from './ImportRosterModal';
@@ -14,8 +14,10 @@ export function RosterScreen() {
   const [showImport, setShowImport] = useState(false);
 
   const players = useLiveQuery(async () => {
-    const all = await db.players.orderBy('lastName').toArray();
-    return showActiveOnly ? all.filter((p) => p.active) : all;
+    let query = supabase.from('players').select('*').order('lastName');
+    if (showActiveOnly) query = query.eq('active', true);
+    const { data } = await query;
+    return (data as Player[]) ?? [];
   }, [showActiveOnly]);
 
   function openAddForm() {
@@ -30,21 +32,21 @@ export function RosterScreen() {
 
   async function handleSave(values: PlayerFormValues) {
     if (editingPlayer) {
-      await db.players.put({ ...editingPlayer, ...values });
+      await supabase.from('players').update(values).eq('id', editingPlayer.id);
     } else {
       const newPlayer: Player = {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
         ...values,
       };
-      await db.players.add(newPlayer);
+      await supabase.from('players').insert(newPlayer);
     }
     setShowForm(false);
   }
 
   async function handleDelete() {
     if (!editingPlayer) return;
-    await db.players.delete(editingPlayer.id);
+    await supabase.from('players').delete().eq('id', editingPlayer.id);
     setShowForm(false);
   }
 

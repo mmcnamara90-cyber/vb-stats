@@ -1,12 +1,41 @@
 import { useEffect, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db';
+import { supabase } from '../../lib/supabaseClient';
+import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Player, Position, PositionTarget, RosterCandidate, Team } from '../../types';
-import { DEFAULT_POSITION_TARGETS, TEAM_LABELS, TEAM_LEVEL, TEAM_RANK, TEAMS } from './teams';
-import { POSITIONS, POSITION_LABELS } from './skills';
+import { DEFAULT_POSITION_TARGETS, TEAM_LABELS, TEAM_LEVEL, TEAMS } from './teams';
+import { POSITIONS, POSITION_LABELS, POSITION_SHORT_LABELS, currentTryoutCycleId } from './skills';
 import { PositionBadges } from './PositionBadges';
 import { computeLevelScopedSkillAverages, overallAvgFromSkills } from './composite';
 import { CandidateComparisonModal } from './CandidateComparisonModal';
+import { gradYearToGrade } from '../../lib/grade';
+
+const CYCLE_ID = currentTryoutCycleId();
+
+// Which players are cascade-eligible for a team's "available" pool by
+// default, before any manual add/remove. Varsity is manual-only (coaches
+// pick everyone by hand); JV auto-picks Juniors not already on Varsity;
+// Level 3 auto-picks Sophomores not already on Varsity/JV; Freshman shows
+// every Freshman (elsewhere-placed ones just show greyed).
+function cascadeEligiblePlayers(
+  team: Team,
+  players: Player[],
+  candidatesByTeam: Map<Team, RosterCandidate[]>,
+): Player[] {
+  const playerIdsOnTeam = (t: Team) => new Set((candidatesByTeam.get(t) ?? []).map((c) => c.playerId));
+  const grade = (p: Player) => gradYearToGrade(p.gradYear);
+
+  if (team === 'varsity') return players;
+  if (team === 'jv') {
+    const varsityIds = playerIdsOnTeam('varsity');
+    return players.filter((p) => grade(p) === 11 && !varsityIds.has(p.id));
+  }
+  if (team === 'level3') {
+    const upperIds = new Set([...playerIdsOnTeam('varsity'), ...playerIdsOnTeam('jv')]);
+    return players.filter((p) => grade(p) === 10 && !upperIds.has(p.id));
+  }
+  // freshman
+  return players.filter((p) => grade(p) === 9);
+}
 
 const inputClass =
   'min-h-9 w-14 rounded border border-gray-300 px-1 text-center text-sm focus:border-blue-500 focus:outline-none';
@@ -14,21 +43,20 @@ const inputClass =
 // Position rows are seeded on demand with deterministic ids (`${team}:${position}`)
 // so re-running this is naturally idempotent and never clobbers a coach's edits.
 async function ensurePositionTargets(team: Team) {
-  for (const position of POSITIONS) {
-    const id = `${team}:${position}`;
-    const existing = await db.positionTargets.get(id);
-    if (existing) continue;
-    const defaults = DEFAULT_POSITION_TARGETS[position];
-    try {
-      await db.positionTargets.add({ id, team, position, ...defaults });
-    } catch {
-      // Another concurrent seed already created it — fine, ignore.
-    }
-  }
+  const rows = POSITIONS.map((position) => ({
+    id: `${team}:${position}`,
+    team,
+    position,
+    ...DEFAULT_POSITION_TARGETS[position],
+  }));
+  // ignoreDuplicates makes this safe to call concurrently (e.g. React
+  // StrictMode's double effect invocation) without racing or overwriting a
+  // coach's already-edited target values.
+  await supabase.from('positionTargets').upsert(rows, { onConflict: 'id', ignoreDuplicates: true });
 }
 
-export function RosterBuilderTab() {
-  const [team, setTeam] = useState<Team>('varsity');
+export function RosterBuilderTab({ initialTeam }: { initialTeam?: Team }) {
+  const [team, setTeam] = useState<Team>(initialTeam ?? 'varsity');
   const [comparingPosition, setComparingPosition] = useState<Position | null>(null);
 
   // Plain effect, not useLiveQuery — liveQuery runs its callback in a
@@ -37,11 +65,33 @@ export function RosterBuilderTab() {
     ensurePositionTargets(team);
   }, [team]);
 
-  const targets = useLiveQuery(() => db.positionTargets.where('team').equals(team).toArray(), [team]);
-  const candidates = useLiveQuery(() => db.rosterCandidates.where('team').equals(team).toArray(), [team]);
+  const targets = useLiveQuery(async () => {
+    const { data } = await supabase.from('positionTargets').select('*').eq('team', team);
+    return (data as PositionTarget[]) ?? [];
+  }, [team]);
+  const candidates = useLiveQuery(async () => {
+    const { data } = await supabase.from('rosterCandidates').select('*').eq('team', team);
+    return (data as RosterCandidate[]) ?? [];
+  }, [team]);
+  // Across every team — needed for cascade eligibility (e.g. "Juniors not
+  // already on Varsity") and the symmetric grey-out rule.
+  const allCandidates = useLiveQuery(async () => {
+    const { data } = await supabase.from('rosterCandidates').select('*');
+    return (data as RosterCandidate[]) ?? [];
+  }, []);
   const players = useLiveQuery(async () => {
-    const all = await db.players.orderBy('lastName').toArray();
-    return all.filter((p) => p.active);
+    const { data } = await supabase.from('players').select('*').eq('active', true).order('lastName');
+    return (data as Player[]) ?? [];
+  }, []);
+  // Cut players (this tryout cycle) are excluded from every team's available
+  // pool and count — once cut, they're no longer being considered anywhere.
+  const cutPlayerIds = useLiveQuery(async () => {
+    const { data } = await supabase
+      .from('rosterDecisions')
+      .select('playerId')
+      .eq('tryoutCycleId', CYCLE_ID)
+      .eq('madeTeam', false);
+    return new Set(((data as { playerId: string }[]) ?? []).map((d) => d.playerId));
   }, []);
 
   const level = TEAM_LEVEL[team];
@@ -56,6 +106,29 @@ export function RosterBuilderTab() {
     const list = candidatesByPosition.get(c.position) ?? [];
     list.push(c);
     candidatesByPosition.set(c.position, list);
+  }
+
+  const candidatesByTeam = new Map<Team, RosterCandidate[]>();
+  const candidatesByPlayer = new Map<string, RosterCandidate[]>();
+  for (const c of allCandidates ?? []) {
+    const teamList = candidatesByTeam.get(c.team) ?? [];
+    teamList.push(c);
+    candidatesByTeam.set(c.team, teamList);
+    const playerList = candidatesByPlayer.get(c.playerId) ?? [];
+    playerList.push(c);
+    candidatesByPlayer.set(c.playerId, playerList);
+  }
+
+  async function quickAdd(playerId: string, position: Position) {
+    const candidate: RosterCandidate = {
+      id: crypto.randomUUID(),
+      team,
+      position,
+      playerId,
+      status: 'considering',
+      createdAt: new Date().toISOString(),
+    };
+    await supabase.from('rosterCandidates').insert(candidate);
   }
 
   const comparingCandidates =
@@ -79,6 +152,15 @@ export function RosterBuilderTab() {
           </button>
         ))}
       </div>
+
+      <AvailablePlayersWidget
+        team={team}
+        players={players ?? []}
+        candidatesByTeam={candidatesByTeam}
+        candidatesByPlayer={candidatesByPlayer}
+        cutPlayerIds={cutPlayerIds ?? new Set()}
+        onQuickAdd={quickAdd}
+      />
 
       <div className="space-y-4">
         {POSITIONS.map((position) => (
@@ -104,6 +186,83 @@ export function RosterBuilderTab() {
           onClose={() => setComparingPosition(null)}
         />
       )}
+    </div>
+  );
+}
+
+// Cascade-eligible players not yet assigned to any position on this team,
+// with a one-tap "+ position" button per tagged position. Anyone already
+// placed on a DIFFERENT team shows greyed/italic and can't be quick-added —
+// they're not "available" here anymore, just visible for context.
+function AvailablePlayersWidget({
+  team,
+  players,
+  candidatesByTeam,
+  candidatesByPlayer,
+  cutPlayerIds,
+  onQuickAdd,
+}: {
+  team: Team;
+  players: Player[];
+  candidatesByTeam: Map<Team, RosterCandidate[]>;
+  candidatesByPlayer: Map<string, RosterCandidate[]>;
+  cutPlayerIds: Set<string>;
+  onQuickAdd: (playerId: string, position: Position) => void;
+}) {
+  const assignedHere = new Set((candidatesByTeam.get(team) ?? []).map((c) => c.playerId));
+  const eligible = cascadeEligiblePlayers(team, players, candidatesByTeam);
+
+  const pool = eligible
+    .filter((p) => !cutPlayerIds.has(p.id) && !assignedHere.has(p.id))
+    .map((p) => ({
+      player: p,
+      greyed: (candidatesByPlayer.get(p.id) ?? []).some((c) => c.team !== team),
+    }))
+    .sort((a, b) => a.player.firstName.localeCompare(b.player.firstName));
+
+  const availableCount = pool.filter((x) => !x.greyed).length;
+
+  return (
+    <div className="rounded-lg border border-gray-200 overflow-hidden mb-4">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50">
+        <span className="font-semibold text-gray-900">Available Players</span>
+        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+          {availableCount} available
+        </span>
+      </div>
+
+      {pool.length === 0 && <p className="px-3 py-2 text-sm text-gray-400">No one currently eligible.</p>}
+
+      <ul className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
+        {pool.map(({ player, greyed }) => (
+          <li key={player.id} className="flex items-center justify-between gap-2 px-3 py-2 flex-wrap">
+            <span className={`font-medium whitespace-nowrap ${greyed ? 'italic text-gray-400' : 'text-gray-900'}`}>
+              {player.firstName} {player.lastName}
+            </span>
+            <span className="flex gap-1 flex-wrap">
+              {player.positions.length === 0 && (
+                <span className="text-xs text-gray-400 italic">no position tagged</span>
+              )}
+              {player.positions.map((pos) => (
+                <button
+                  key={pos}
+                  type="button"
+                  disabled={greyed}
+                  onClick={() => onQuickAdd(player.id, pos)}
+                  title={greyed ? 'Already on another team' : `Add as ${POSITION_LABELS[pos]}`}
+                  className={`min-h-9 px-2 rounded-lg border text-xs font-medium ${
+                    greyed
+                      ? 'border-gray-200 text-gray-300 cursor-not-allowed'
+                      : 'border-blue-300 bg-blue-50 text-blue-700'
+                  }`}
+                >
+                  + {POSITION_SHORT_LABELS[pos]}
+                </button>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -142,18 +301,15 @@ function PositionCard({
 
   async function updateTarget(patch: Partial<Pick<PositionTarget, 'minCount' | 'targetCount'>>) {
     const id = `${team}:${position}`;
-    const existing = await db.positionTargets.get(id);
-    if (existing) {
-      await db.positionTargets.update(id, patch);
-    } else {
-      await db.positionTargets.add({
-        id,
-        team,
-        position,
-        ...DEFAULT_POSITION_TARGETS[position],
-        ...patch,
-      });
-    }
+    const { data: existing } = await supabase.from('positionTargets').select('*').eq('id', id).maybeSingle();
+    await supabase.from('positionTargets').upsert({
+      id,
+      team,
+      position,
+      ...DEFAULT_POSITION_TARGETS[position],
+      ...existing,
+      ...patch,
+    });
   }
 
   async function setStatus(candidateId: string, status: RosterCandidate['status']) {
@@ -162,21 +318,23 @@ function PositionCard({
       if (candidate) {
         // A player fills exactly one slot per team — demote any other confirmed
         // slot they hold on this team back to "considering".
-        const others = await db.rosterCandidates
-          .where('team')
-          .equals(team)
-          .filter((c) => c.playerId === candidate.playerId && c.status === 'confirmed' && c.id !== candidateId)
-          .toArray();
-        for (const other of others) {
-          await db.rosterCandidates.update(other.id, { status: 'considering' });
+        const { data: others } = await supabase
+          .from('rosterCandidates')
+          .select('id')
+          .eq('team', team)
+          .eq('playerId', candidate.playerId)
+          .eq('status', 'confirmed')
+          .neq('id', candidateId);
+        for (const other of (others as { id: string }[]) ?? []) {
+          await supabase.from('rosterCandidates').update({ status: 'considering' }).eq('id', other.id);
         }
       }
     }
-    await db.rosterCandidates.update(candidateId, { status });
+    await supabase.from('rosterCandidates').update({ status }).eq('id', candidateId);
   }
 
   async function removeCandidate(candidateId: string) {
-    await db.rosterCandidates.delete(candidateId);
+    await supabase.from('rosterCandidates').delete().eq('id', candidateId);
   }
 
   function renderRow(candidate: RosterCandidate, kind: 'confirmed' | 'considering') {
@@ -315,25 +473,22 @@ function AddCandidatesModal({
   const [search, setSearch] = useState('');
 
   const players = useLiveQuery(async () => {
-    const all = await db.players.toArray();
-    return all
-      .filter((p) => p.active && !existingPlayerIds.has(p.id))
+    const { data } = await supabase.from('players').select('*').eq('active', true);
+    return ((data as Player[]) ?? [])
+      .filter((p) => !existingPlayerIds.has(p.id))
       .sort((a, b) => a.firstName.localeCompare(b.firstName));
   }, []);
 
-  // Confirmed-elsewhere lookup, across every team, so a player already locked
-  // into a higher-ranked team shows as unavailable here rather than letting a
-  // coach double-book them onto a lower team.
-  const confirmedElsewhere = useLiveQuery(
-    () => db.rosterCandidates.where('status').equals('confirmed').toArray(),
-    [],
-  );
-  const bestConfirmedTeamByPlayer = new Map<string, Team>();
-  for (const c of confirmedElsewhere ?? []) {
-    const existing = bestConfirmedTeamByPlayer.get(c.playerId);
-    if (!existing || TEAM_RANK[c.team] < TEAM_RANK[existing]) {
-      bestConfirmedTeamByPlayer.set(c.playerId, c.team);
-    }
+  // Elsewhere lookup, across every team (any status — considering or
+  // confirmed), so a player already on a different team's list shows locked
+  // here rather than letting a coach double-book them onto another team.
+  const candidatesElsewhere = useLiveQuery(async () => {
+    const { data } = await supabase.from('rosterCandidates').select('*').neq('team', team);
+    return (data as RosterCandidate[]) ?? [];
+  }, [team]);
+  const elsewhereTeamByPlayer = new Map<string, Team>();
+  for (const c of candidatesElsewhere ?? []) {
+    if (!elsewhereTeamByPlayer.has(c.playerId)) elsewhereTeamByPlayer.set(c.playerId, c.team);
   }
 
   const query = search.trim().toLowerCase();
@@ -351,17 +506,15 @@ function AddCandidatesModal({
   }
 
   async function handleAdd() {
-    for (const playerId of selected) {
-      const candidate: RosterCandidate = {
-        id: crypto.randomUUID(),
-        team,
-        position,
-        playerId,
-        status: 'considering',
-        createdAt: new Date().toISOString(),
-      };
-      await db.rosterCandidates.add(candidate);
-    }
+    const newCandidates: RosterCandidate[] = [...selected].map((playerId) => ({
+      id: crypto.randomUUID(),
+      team,
+      position,
+      playerId,
+      status: 'considering',
+      createdAt: new Date().toISOString(),
+    }));
+    if (newCandidates.length > 0) await supabase.from('rosterCandidates').insert(newCandidates);
     onClose();
   }
 
@@ -383,15 +536,15 @@ function AddCandidatesModal({
         <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 overflow-hidden max-h-80 overflow-y-auto mb-4">
           {visiblePlayers?.map((p) => {
             const checked = selected.has(p.id);
-            const lockedByTeam = bestConfirmedTeamByPlayer.get(p.id);
-            const locked = lockedByTeam != null && TEAM_RANK[lockedByTeam] < TEAM_RANK[team];
+            const lockedByTeam = elsewhereTeamByPlayer.get(p.id);
+            const locked = lockedByTeam != null;
             return (
               <li key={p.id}>
                 <button
                   type="button"
                   disabled={locked}
                   onClick={() => toggle(p.id)}
-                  title={locked ? `Already confirmed on ${TEAM_LABELS[lockedByTeam]}` : undefined}
+                  title={locked ? `Already on ${TEAM_LABELS[lockedByTeam]}` : undefined}
                   className={`w-full min-h-11 flex items-center gap-3 px-4 py-2 text-left ${
                     locked ? 'opacity-40 cursor-not-allowed' : checked ? 'bg-blue-50' : ''
                   }`}
@@ -409,9 +562,7 @@ function AddCandidatesModal({
                     </span>
                     <PositionBadges positions={p.positions} />
                     {locked && (
-                      <span className="text-xs text-gray-500 whitespace-nowrap">
-                        Confirmed: {TEAM_LABELS[lockedByTeam]}
-                      </span>
+                      <span className="text-xs text-gray-500 whitespace-nowrap">On {TEAM_LABELS[lockedByTeam]}</span>
                     )}
                   </span>
                 </button>

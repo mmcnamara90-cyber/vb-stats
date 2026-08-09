@@ -1,16 +1,17 @@
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db';
+import { supabase } from '../../lib/supabaseClient';
+import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
+import type { Player } from '../../types';
 import { computeTryoutComposites } from './composite';
 import { POSITION_SHORT_LABELS, SKILLS, SKILL_SHORT_LABELS } from './skills';
 
 export function RankingsTab() {
   const rows = useLiveQuery(async () => {
-    const [players, composites] = await Promise.all([
-      db.players.orderBy('lastName').toArray(),
+    const [{ data: players }, composites] = await Promise.all([
+      supabase.from('players').select('*').eq('active', true).order('lastName'),
       computeTryoutComposites(),
     ]);
-    return players
-      .filter((p) => p.active && composites.has(p.id))
+    return ((players as Player[]) ?? [])
+      .filter((p) => composites.has(p.id))
       .map((p) => ({ player: p, composite: composites.get(p.id)! }))
       .sort((a, b) => (b.composite.overallAvg ?? 0) - (a.composite.overallAvg ?? 0));
   }, []);

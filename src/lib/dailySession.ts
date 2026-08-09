@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db';
+import { supabase } from './supabaseClient';
+import { useSupabaseQuery } from './useSupabaseQuery';
 import type { Session, SessionType } from '../types';
 
 export function todayIso(): string {
@@ -12,25 +12,27 @@ export function todayIso(): string {
 }
 
 // Cache in-flight get-or-create calls per (type, date) so concurrent mounts
-// (e.g. React StrictMode's double effect invocation) can't race and create
-// two sessions for the same day.
+// can't race and create two sessions for the same day from the same tab.
 const getOrCreateCache = new Map<string, Promise<Session>>();
 
 function getOrCreateSession(type: SessionType, date: string): Promise<Session> {
   const key = `${type}:${date}`;
   let promise = getOrCreateCache.get(key);
   if (!promise) {
-    promise = db.transaction('rw', db.sessions, async () => {
-      const existing = await db.sessions
-        .where('type')
-        .equals(type)
-        .and((s) => s.date === date)
-        .first();
-      if (existing) return existing;
+    promise = (async () => {
+      const { data: existing } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('type', type)
+        .eq('date', date)
+        .maybeSingle();
+      if (existing) return existing as Session;
+
       const created: Session = { id: crypto.randomUUID(), type, date };
-      await db.sessions.add(created);
+      const { error } = await supabase.from('sessions').insert(created);
+      if (error) throw error;
       return created;
-    });
+    })();
     getOrCreateCache.set(key, promise);
   }
   return promise;
@@ -50,8 +52,9 @@ export function useTodaysSession(type: SessionType): Session | undefined {
     };
   }, [type, date]);
 
-  return useLiveQuery(async () => {
+  return useSupabaseQuery(async () => {
     if (!sessionId) return undefined;
-    return db.sessions.get(sessionId);
+    const { data } = await supabase.from('sessions').select('*').eq('id', sessionId).maybeSingle();
+    return (data as Session) ?? undefined;
   }, [sessionId]);
 }

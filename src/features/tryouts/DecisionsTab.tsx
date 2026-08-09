@@ -1,6 +1,6 @@
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db';
-import type { RosterDecision } from '../../types';
+import { supabase } from '../../lib/supabaseClient';
+import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
+import type { Player, RosterDecision } from '../../types';
 import { computeTryoutComposites } from './composite';
 import { currentTryoutCycleId } from './skills';
 
@@ -8,14 +8,15 @@ const CYCLE_ID = currentTryoutCycleId();
 
 export function DecisionsTab() {
   const rows = useLiveQuery(async () => {
-    const [players, composites, decisions] = await Promise.all([
-      db.players.orderBy('lastName').toArray(),
+    const [{ data: players }, composites, { data: decisions }] = await Promise.all([
+      supabase.from('players').select('*').eq('active', true).order('lastName'),
       computeTryoutComposites(),
-      db.rosterDecisions.where('tryoutCycleId').equals(CYCLE_ID).toArray(),
+      supabase.from('rosterDecisions').select('*').eq('tryoutCycleId', CYCLE_ID),
     ]);
-    const decisionByPlayer = new Map(decisions.map((d) => [d.playerId, d]));
-    return players
-      .filter((p) => p.active)
+    const decisionByPlayer = new Map(
+      ((decisions as RosterDecision[]) ?? []).map((d) => [d.playerId, d]),
+    );
+    return ((players as Player[]) ?? [])
       .map((p) => ({
         player: p,
         composite: composites.get(p.id) ?? null,
@@ -25,18 +26,19 @@ export function DecisionsTab() {
   }, []);
 
   async function setDecision(playerId: string, madeTeam: boolean | null, compositeAvg: number | null) {
-    const existing = await db.rosterDecisions
-      .where('playerId')
-      .equals(playerId)
-      .and((d) => d.tryoutCycleId === CYCLE_ID)
-      .first();
+    const { data: existing } = await supabase
+      .from('rosterDecisions')
+      .select('*')
+      .eq('playerId', playerId)
+      .eq('tryoutCycleId', CYCLE_ID)
+      .maybeSingle();
     const patch: Partial<RosterDecision> = {
       madeTeam,
       compositeScore: compositeAvg ?? undefined,
       decidedAt: madeTeam === null ? undefined : new Date().toISOString(),
     };
     if (existing) {
-      await db.rosterDecisions.update(existing.id, patch);
+      await supabase.from('rosterDecisions').update(patch).eq('id', existing.id);
     } else {
       const row: RosterDecision = {
         id: crypto.randomUUID(),
@@ -46,7 +48,7 @@ export function DecisionsTab() {
         compositeScore: compositeAvg ?? undefined,
         decidedAt: madeTeam === null ? undefined : new Date().toISOString(),
       };
-      await db.rosterDecisions.add(row);
+      await supabase.from('rosterDecisions').insert(row);
     }
   }
 

@@ -1,5 +1,5 @@
-import { db } from '../../db';
-import type { Position, Skill, TryoutLevel } from '../../types';
+import { supabase } from '../../lib/supabaseClient';
+import type { Player, Position, Skill, SkillScore, TryoutLevel } from '../../types';
 
 export interface CompositeResult {
   playerId: string;
@@ -12,11 +12,11 @@ export interface CompositeResult {
 // then averages skill-scores into one overall number. This keeps a skill
 // with many drills (or a drill with many taps) from dominating the total.
 export async function computeTryoutComposites(): Promise<Map<string, CompositeResult>> {
-  const tryoutSessions = await db.sessions.where('type').equals('tryout').toArray();
-  const sessionIds = new Set(tryoutSessions.map((s) => s.id));
+  const { data: tryoutSessions } = await supabase.from('sessions').select('id').eq('type', 'tryout');
+  const sessionIds = new Set(((tryoutSessions as { id: string }[]) ?? []).map((s) => s.id));
 
-  const allScores = await db.skillScores.toArray();
-  const relevant = allScores.filter((s) => sessionIds.has(s.sessionId));
+  const { data: allScores } = await supabase.from('skillScores').select('*');
+  const relevant = ((allScores as SkillScore[]) ?? []).filter((s) => sessionIds.has(s.sessionId));
 
   const byPlayerDrill = new Map<string, Map<string, { sum: number; n: number; skill: Skill }>>();
   for (const s of relevant) {
@@ -67,15 +67,19 @@ export async function computeTryoutComposites(): Promise<Map<string, CompositeRe
 export async function computeLevelScopedSkillAverages(): Promise<
   Map<TryoutLevel, Map<string, Partial<Record<Skill, number>>>>
 > {
-  const tryoutSessions = await db.sessions.where('type').equals('tryout').toArray();
+  const { data: tryoutSessions } = await supabase
+    .from('sessions')
+    .select('id, level')
+    .eq('type', 'tryout');
   const levelBySessionId = new Map<string, TryoutLevel>();
-  for (const s of tryoutSessions) if (s.level) levelBySessionId.set(s.id, s.level);
+  for (const s of (tryoutSessions as { id: string; level: TryoutLevel | null }[]) ?? [])
+    if (s.level) levelBySessionId.set(s.id, s.level);
 
-  const allScores = await db.skillScores.toArray();
+  const { data: allScores } = await supabase.from('skillScores').select('*');
 
   // level -> playerId -> drillId -> { sum, n, skill }
   const byLevel = new Map<TryoutLevel, Map<string, Map<string, { sum: number; n: number; skill: Skill }>>>();
-  for (const s of allScores) {
+  for (const s of (allScores as SkillScore[]) ?? []) {
     const level = levelBySessionId.get(s.sessionId);
     if (!level) continue;
     let byPlayer = byLevel.get(level);
@@ -115,6 +119,11 @@ export async function computeLevelScopedSkillAverages(): Promise<
   return result;
 }
 
+async function fetchAllPlayers(): Promise<Player[]> {
+  const { data } = await supabase.from('players').select('*');
+  return (data as Player[]) ?? [];
+}
+
 export function benchmarkKey(level: TryoutLevel, position: Position, skill: Skill): string {
   return `${level}|${position}|${skill}`;
 }
@@ -136,7 +145,7 @@ export interface BenchmarkSuggestion {
 export async function computeBenchmarkSuggestions(): Promise<Map<string, BenchmarkSuggestion>> {
   const [levelScoped, players] = await Promise.all([
     computeLevelScopedSkillAverages(),
-    db.players.toArray(),
+    fetchAllPlayers(),
   ]);
   const positionsByPlayer = new Map(players.map((p) => [p.id, p.positions]));
 
@@ -180,7 +189,7 @@ export interface HighScore {
 export async function computeHighScores(): Promise<Map<string, HighScore>> {
   const [levelScoped, players] = await Promise.all([
     computeLevelScopedSkillAverages(),
-    db.players.toArray(),
+    fetchAllPlayers(),
   ]);
   const playersById = new Map(players.map((p) => [p.id, p]));
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db';
+import { supabase } from '../../lib/supabaseClient';
+import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Benchmark, Position, Skill, TryoutLevel } from '../../types';
 import { benchmarkKey, computeBenchmarkSuggestions } from './composite';
 import { POSITIONS, POSITION_LABELS, SKILLS, SKILL_SHORT_LABELS, TRYOUT_LEVELS, TRYOUT_LEVEL_LABELS } from './skills';
@@ -8,10 +8,10 @@ import { POSITIONS, POSITION_LABELS, SKILLS, SKILL_SHORT_LABELS, TRYOUT_LEVELS, 
 export function BenchmarksTab() {
   const [level, setLevel] = useState<TryoutLevel>('upper');
 
-  const benchmarks = useLiveQuery(
-    () => db.benchmarks.where('level').equals(level).toArray(),
-    [level],
-  );
+  const benchmarks = useLiveQuery(async () => {
+    const { data } = await supabase.from('benchmarks').select('*').eq('level', level);
+    return (data as Benchmark[]) ?? [];
+  }, [level]);
   const suggestions = useLiveQuery(() => computeBenchmarkSuggestions(), []);
 
   const manualByKey = new Map((benchmarks ?? []).map((b) => [benchmarkKey(b.level, b.position, b.skill), b]));
@@ -19,11 +19,14 @@ export function BenchmarksTab() {
   async function setManual(position: Position, skill: Skill, value: number | null) {
     const existing = manualByKey.get(benchmarkKey(level, position, skill));
     if (value == null) {
-      if (existing) await db.benchmarks.delete(existing.id);
+      if (existing) await supabase.from('benchmarks').delete().eq('id', existing.id);
       return;
     }
     if (existing) {
-      await db.benchmarks.update(existing.id, { manualValue: value, updatedAt: new Date().toISOString() });
+      await supabase
+        .from('benchmarks')
+        .update({ manualValue: value, updatedAt: new Date().toISOString() })
+        .eq('id', existing.id);
     } else {
       const row: Benchmark = {
         id: crypto.randomUUID(),
@@ -33,7 +36,7 @@ export function BenchmarksTab() {
         manualValue: value,
         updatedAt: new Date().toISOString(),
       };
-      await db.benchmarks.add(row);
+      await supabase.from('benchmarks').insert(row);
     }
   }
 

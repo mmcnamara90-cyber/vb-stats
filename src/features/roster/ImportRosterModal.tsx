@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { db } from '../../db';
+import { supabase } from '../../lib/supabaseClient';
 import type { Player } from '../../types';
 import { buildImportRows, parseCsvObjects, planImport, type ImportPlan } from './importRoster';
 import { POSITION_LABELS } from '../tryouts/skills';
@@ -23,8 +23,8 @@ export function ImportRosterModal({ onClose }: { onClose: () => void }) {
       const text = await file.text();
       const records = parseCsvObjects(text);
       const rows = buildImportRows(records);
-      const existingPlayers = await db.players.toArray();
-      setPlan(planImport(rows, existingPlayers));
+      const { data: existingPlayers } = await supabase.from('players').select('*');
+      setPlan(planImport(rows, (existingPlayers as Player[]) ?? []));
       setSkippedCount(records.length - rows.length);
     } catch {
       setError('Could not read that file as CSV.');
@@ -35,31 +35,32 @@ export function ImportRosterModal({ onClose }: { onClose: () => void }) {
   async function handleImport() {
     if (!plan) return;
     setImporting(true);
-    await db.transaction('rw', db.players, async () => {
-      for (const row of plan.toCreate) {
-        const player: Player = {
-          id: crypto.randomUUID(),
-          firstName: row.firstName,
-          lastName: row.lastName,
-          gradYear: row.gradYear ?? new Date().getFullYear() + 1,
-          positions: row.positions,
-          contactPhone: row.contactPhone,
-          contactEmail: row.contactEmail,
-          tags: [],
-          active: true,
-          createdAt: new Date().toISOString(),
-        };
-        await db.players.add(player);
-      }
-      for (const { row, existing } of plan.toUpdate) {
-        await db.players.update(existing.id, {
+    if (plan.toCreate.length > 0) {
+      const newPlayers: Player[] = plan.toCreate.map((row) => ({
+        id: crypto.randomUUID(),
+        firstName: row.firstName,
+        lastName: row.lastName,
+        gradYear: row.gradYear ?? new Date().getFullYear() + 1,
+        positions: row.positions,
+        contactPhone: row.contactPhone,
+        contactEmail: row.contactEmail,
+        tags: [],
+        active: true,
+        createdAt: new Date().toISOString(),
+      }));
+      await supabase.from('players').insert(newPlayers);
+    }
+    for (const { row, existing } of plan.toUpdate) {
+      await supabase
+        .from('players')
+        .update({
           gradYear: row.gradYear ?? existing.gradYear,
           positions: row.positions.length > 0 ? row.positions : existing.positions,
           contactPhone: row.contactPhone ?? existing.contactPhone,
           contactEmail: row.contactEmail ?? existing.contactEmail,
-        });
-      }
-    });
+        })
+        .eq('id', existing.id);
+    }
     setImporting(false);
     setDone(true);
   }

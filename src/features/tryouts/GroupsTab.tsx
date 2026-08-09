@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db';
+import { supabase } from '../../lib/supabaseClient';
+import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { PlayerGroup } from '../../types';
 import { GroupForm, type GroupFormValues } from './GroupForm';
 
@@ -8,7 +8,10 @@ export function GroupsTab() {
   const [editingGroup, setEditingGroup] = useState<PlayerGroup | undefined>(undefined);
   const [showForm, setShowForm] = useState(false);
 
-  const groups = useLiveQuery(() => db.playerGroups.orderBy('name').toArray(), []);
+  const groups = useLiveQuery(async () => {
+    const { data } = await supabase.from('playerGroups').select('*').order('name');
+    return (data as PlayerGroup[]) ?? [];
+  }, []);
 
   function openAdd() {
     setEditingGroup(undefined);
@@ -22,21 +25,21 @@ export function GroupsTab() {
 
   async function handleSave(values: GroupFormValues) {
     if (editingGroup) {
-      await db.playerGroups.put({ ...editingGroup, ...values });
+      await supabase.from('playerGroups').update(values).eq('id', editingGroup.id);
     } else {
       const group: PlayerGroup = {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
         ...values,
       };
-      await db.playerGroups.add(group);
+      await supabase.from('playerGroups').insert(group);
     }
     setShowForm(false);
   }
 
   async function handleDelete() {
     if (!editingGroup) return;
-    await db.playerGroups.delete(editingGroup.id);
+    await supabase.from('playerGroups').delete().eq('id', editingGroup.id);
     setShowForm(false);
   }
 

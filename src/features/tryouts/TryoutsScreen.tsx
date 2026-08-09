@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { db } from '../../db';
+import { supabase } from '../../lib/supabaseClient';
 import { useTodaysSession } from '../../lib/dailySession';
 import type { TryoutLevel } from '../../types';
 import { DrillsTab } from './DrillsTab';
@@ -27,7 +27,7 @@ export function TryoutsScreen() {
 
   async function setLevel(level: TryoutLevel) {
     if (!session) return;
-    await db.sessions.update(session.id, { level });
+    await supabase.from('sessions').update({ level }).eq('id', session.id);
   }
 
   return (

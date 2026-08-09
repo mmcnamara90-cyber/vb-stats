@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db';
-import type { PlayerGroup } from '../../types';
+import { supabase } from '../../lib/supabaseClient';
+import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
+import type { Player, PlayerGroup } from '../../types';
 import { PositionBadges } from './PositionBadges';
 
 export interface GroupFormValues {
@@ -24,8 +24,8 @@ export function GroupForm({
   const [playerIds, setPlayerIds] = useState<string[]>(group?.playerIds ?? []);
 
   const activePlayers = useLiveQuery(async () => {
-    const all = await db.players.orderBy('lastName').toArray();
-    return all.filter((p) => p.active);
+    const { data } = await supabase.from('players').select('*').eq('active', true).order('lastName');
+    return (data as Player[]) ?? [];
   }, []);
 
   function toggle(playerId: string) {

@@ -18,17 +18,6 @@ export const TEAM_LEVEL: Record<Team, TryoutLevel> = {
   level3: 'lower',
 };
 
-// Overall competitiveness ranking, most to least selective. Once a player is
-// confirmed on a team, they're locked out of being added as a candidate on
-// any lower-ranked team (but remain available for equal/higher teams — e.g.
-// a confirmed JV player can still be looked at for Varsity).
-export const TEAM_RANK: Record<Team, number> = {
-  varsity: 0,
-  jv: 1,
-  freshman: 2,
-  level3: 3,
-};
-
 // Starting point for a team's depth chart — editable per team afterward.
 export const DEFAULT_POSITION_TARGETS: Record<Position, { minCount: number; targetCount: number }> = {
   S: { minCount: 2, targetCount: 3 },

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db';
+import { supabase } from '../../lib/supabaseClient';
+import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { TryoutDrill } from '../../types';
 import { DrillForm, type DrillFormValues } from './DrillForm';
 import { SKILL_LABELS } from './skills';
@@ -9,7 +9,10 @@ export function DrillsTab() {
   const [editingDrill, setEditingDrill] = useState<TryoutDrill | undefined>(undefined);
   const [showForm, setShowForm] = useState(false);
 
-  const drills = useLiveQuery(() => db.tryoutDrills.orderBy('name').toArray(), []);
+  const drills = useLiveQuery(async () => {
+    const { data } = await supabase.from('tryoutDrills').select('*').order('name');
+    return (data as TryoutDrill[]) ?? [];
+  }, []);
 
   function openAdd() {
     setEditingDrill(undefined);
@@ -23,21 +26,21 @@ export function DrillsTab() {
 
   async function handleSave(values: DrillFormValues) {
     if (editingDrill) {
-      await db.tryoutDrills.put({ ...editingDrill, ...values });
+      await supabase.from('tryoutDrills').update(values).eq('id', editingDrill.id);
     } else {
       const drill: TryoutDrill = {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
         ...values,
       };
-      await db.tryoutDrills.add(drill);
+      await supabase.from('tryoutDrills').insert(drill);
     }
     setShowForm(false);
   }
 
   async function handleDelete() {
     if (!editingDrill) return;
-    await db.tryoutDrills.delete(editingDrill.id);
+    await supabase.from('tryoutDrills').delete().eq('id', editingDrill.id);
     setShowForm(false);
   }
 

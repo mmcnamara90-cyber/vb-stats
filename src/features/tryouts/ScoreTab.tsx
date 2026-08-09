@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../../db';
+import { supabase } from '../../lib/supabaseClient';
+import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Benchmark, DrillRun, Player, PlayerGroup, Session, SkillScore, TryoutDrill } from '../../types';
 import { benchmarkKey, computeHighScores } from './composite';
 import { POSITION_LABELS, SKILL_LABELS } from './skills';
@@ -11,11 +11,14 @@ const checkboxClass = (checked: boolean) =>
   }`;
 
 export function ScoreTab({ session }: { session: Session | undefined }) {
-  const drills = useLiveQuery(() => db.tryoutDrills.orderBy('name').toArray(), []);
+  const drills = useLiveQuery(async () => {
+    const { data } = await supabase.from('tryoutDrills').select('*').order('name');
+    return (data as TryoutDrill[]) ?? [];
+  }, []);
 
   const activeRun = useLiveQuery(async () => {
-    const all = await db.drillRuns.toArray();
-    return all.find((r) => !r.endedAt);
+    const { data } = await supabase.from('drillRuns').select('*').is('endedAt', null).limit(1).maybeSingle();
+    return (data as DrillRun) ?? undefined;
   }, []);
 
   if (activeRun) {
@@ -35,16 +38,19 @@ function StartDrillForm({
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const activePlayers = useLiveQuery(async () => {
-    const all = await db.players.orderBy('lastName').toArray();
-    return all.filter((p) => p.active);
+    const { data } = await supabase.from('players').select('*').eq('active', true).order('lastName');
+    return (data as Player[]) ?? [];
   }, []);
 
-  const groups = useLiveQuery(() => db.playerGroups.orderBy('name').toArray(), []);
+  const groups = useLiveQuery(async () => {
+    const { data } = await supabase.from('playerGroups').select('*').order('name');
+    return (data as PlayerGroup[]) ?? [];
+  }, []);
 
   const tags = useLiveQuery(async () => {
-    const all = await db.players.toArray();
+    const { data } = await supabase.from('players').select('tags').eq('active', true);
     const set = new Set<string>();
-    for (const p of all) if (p.active) for (const t of p.tags) set.add(t);
+    for (const p of (data as { tags: string[] }[] | null) ?? []) for (const t of p.tags) set.add(t);
     return [...set].sort();
   }, []);
 
@@ -82,7 +88,7 @@ function StartDrillForm({
       playerIds: [...selected],
       startedAt: new Date().toISOString(),
     };
-    await db.drillRuns.add(run);
+    await supabase.from('drillRuns').insert(run);
   }
 
   return (
@@ -200,15 +206,15 @@ function ActiveDrillRun({
   const level = session?.level;
 
   const players = useLiveQuery(async () => {
-    const rows = await Promise.all(run.playerIds.map((id) => db.players.get(id)));
-    return rows
-      .filter((p): p is Player => !!p)
-      .sort((a, b) => a.lastName.localeCompare(b.lastName));
+    if (run.playerIds.length === 0) return [];
+    const { data } = await supabase.from('players').select('*').in('id', run.playerIds);
+    return ((data as Player[]) ?? []).sort((a, b) => a.lastName.localeCompare(b.lastName));
   }, [playerIdsKey]);
 
   const benchmarks = useLiveQuery(async () => {
     if (!level) return [] as Benchmark[];
-    return db.benchmarks.where('level').equals(level).toArray();
+    const { data } = await supabase.from('benchmarks').select('*').eq('level', level);
+    return (data as Benchmark[]) ?? [];
   }, [level]);
 
   const highScores = useLiveQuery(() => computeHighScores(), []);
@@ -216,10 +222,10 @@ function ActiveDrillRun({
   const benchmarksByKey = new Map((benchmarks ?? []).map((b) => [benchmarkKey(b.level, b.position, b.skill), b]));
 
   const scoresByPlayer = useLiveQuery(async () => {
-    const tryoutSessions = await db.sessions.where('type').equals('tryout').toArray();
-    const sessionIds = new Set(tryoutSessions.map((s) => s.id));
-    const rows = await db.skillScores.where('drillId').equals(run.drillId).toArray();
-    const relevant = rows
+    const { data: tryoutSessions } = await supabase.from('sessions').select('id').eq('type', 'tryout');
+    const sessionIds = new Set(((tryoutSessions as { id: string }[]) ?? []).map((s) => s.id));
+    const { data: rows } = await supabase.from('skillScores').select('*').eq('drillId', run.drillId);
+    const relevant = ((rows as SkillScore[]) ?? [])
       .filter((r) => sessionIds.has(r.sessionId) && run.playerIds.includes(r.playerId))
       .sort((a, b) => a.scoredAt.localeCompare(b.scoredAt));
     const map = new Map<string, SkillScore[]>();
@@ -243,15 +249,15 @@ function ActiveDrillRun({
       score: value,
       scoredAt: new Date().toISOString(),
     };
-    await db.skillScores.add(row);
+    await supabase.from('skillScores').insert(row);
   }
 
   async function removeTap(scoreId: string) {
-    await db.skillScores.delete(scoreId);
+    await supabase.from('skillScores').delete().eq('id', scoreId);
   }
 
   async function endDrill() {
-    await db.drillRuns.update(run.id, { endedAt: new Date().toISOString() });
+    await supabase.from('drillRuns').update({ endedAt: new Date().toISOString() }).eq('id', run.id);
   }
 
   return (

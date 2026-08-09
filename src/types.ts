@@ -119,6 +119,36 @@ export interface RosterDecision {
   decidedAt?: string;
 }
 
+// ===== Roster building (during tryouts, before final cut decisions) =====
+
+// Upper pool feeds Varsity/JV; Lower pool feeds Freshman/Level 3. Each team
+// gets its own depth chart even though two teams share a tryout pool.
+export type Team = 'varsity' | 'jv' | 'freshman' | 'level3';
+
+// How many of a position a team needs. Editable per team — these are targets,
+// not hard caps.
+export interface PositionTarget {
+  id: string;
+  team: Team;
+  position: Position;
+  minCount: number;
+  targetCount: number;
+}
+
+// A player being weighed for (or locked into) a specific team+position slot.
+// A player can be "considering" for several team/position combos at once
+// (e.g. both JV and Varsity setter) but should only be "confirmed" for one —
+// confirming fills that one quota; other tagged positions are just shown as
+// bonus context, not double-counted.
+export interface RosterCandidate {
+  id: string;
+  team: Team;
+  position: Position;
+  playerId: string;
+  status: 'considering' | 'confirmed';
+  createdAt: string;
+}
+
 // ===== Lineup / rotation =====
 
 export type CourtZone = 1 | 2 | 3 | 4 | 5 | 6; // standard volleyball rotation zones

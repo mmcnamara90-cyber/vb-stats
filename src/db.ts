@@ -13,6 +13,8 @@ import type {
   Drill,
   PracticePlan,
   Benchmark,
+  PositionTarget,
+  RosterCandidate,
 } from './types';
 
 const db = new Dexie('VolleyballCoachDB') as Dexie & {
@@ -29,6 +31,8 @@ const db = new Dexie('VolleyballCoachDB') as Dexie & {
   drills: EntityTable<Drill, 'id'>;
   practicePlans: EntityTable<PracticePlan, 'id'>;
   benchmarks: EntityTable<Benchmark, 'id'>;
+  positionTargets: EntityTable<PositionTarget, 'id'>;
+  rosterCandidates: EntityTable<RosterCandidate, 'id'>;
 };
 
 db.version(3).stores({
@@ -82,5 +86,24 @@ db.version(4)
         delete p.secondaryPosition;
       });
   });
+
+// v5: roster-building — per-team position targets and candidate shortlists.
+db.version(5).stores({
+  players: 'id, active, lastName, gradYear, *positions',
+  sessions: 'id, type, date, level',
+  tryoutDrills: 'id, skill, name',
+  playerGroups: 'id, name',
+  drillRuns: 'id, drillId, sessionId',
+  skillScores: 'id, playerId, sessionId, skill, drillId, scoredAt',
+  notes: 'id, playerId, sessionId, createdAt',
+  rosterDecisions: 'id, playerId, tryoutCycleId',
+  lineups: 'id, gameId, setNumber',
+  statEvents: 'id, gameId, setNumber, playerId, statType, timestamp',
+  drills: 'id, name',
+  practicePlans: 'id, sessionId',
+  benchmarks: 'id, position, skill, level',
+  positionTargets: 'id, team, position',
+  rosterCandidates: 'id, team, position, playerId, status',
+});
 
 export { db };

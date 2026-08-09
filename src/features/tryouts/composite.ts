@@ -62,8 +62,9 @@ export async function computeTryoutComposites(): Promise<Map<string, CompositeRe
 
 // Player's per-skill average, scoped to a single tryout level (upper/lower).
 // Same drill-then-skill averaging as computeTryoutComposites, just filtered
-// down to sessions tagged with the given level first.
-async function computeLevelScopedSkillAverages(): Promise<
+// down to sessions tagged with the given level first. Exported so the Roster
+// Builder can pull the same per-player, per-level averages for radar charts.
+export async function computeLevelScopedSkillAverages(): Promise<
   Map<TryoutLevel, Map<string, Partial<Record<Skill, number>>>>
 > {
   const tryoutSessions = await db.sessions.where('type').equals('tryout').toArray();
@@ -116,6 +117,13 @@ async function computeLevelScopedSkillAverages(): Promise<
 
 export function benchmarkKey(level: TryoutLevel, position: Position, skill: Skill): string {
   return `${level}|${position}|${skill}`;
+}
+
+// Simple mean across whatever skills a player has scores for — used wherever
+// a single "how are they doing overall" number is needed from a bySkill map.
+export function overallAvgFromSkills(bySkill: Partial<Record<Skill, number>>): number | null {
+  const values = Object.values(bySkill).filter((v): v is number => v != null);
+  return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 }
 
 export interface BenchmarkSuggestion {

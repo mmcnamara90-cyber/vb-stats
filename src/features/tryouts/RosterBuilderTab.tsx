@@ -13,9 +13,10 @@ const CYCLE_ID = currentTryoutCycleId();
 
 // Which players are cascade-eligible for a team's "available" pool by
 // default, before any manual add/remove. Varsity is manual-only (coaches
-// pick everyone by hand); JV auto-picks Juniors not already on Varsity;
-// Level 3 auto-picks Sophomores not already on Varsity/JV; Freshman shows
-// every Freshman (elsewhere-placed ones just show greyed).
+// pick everyone by hand); JV auto-picks Juniors and below not already on
+// Varsity; Level 3 auto-picks Sophomores and below not already on
+// Varsity/JV; Freshman shows every Freshman (elsewhere-placed ones just
+// show greyed).
 function cascadeEligiblePlayers(
   team: Team,
   players: Player[],
@@ -27,11 +28,11 @@ function cascadeEligiblePlayers(
   if (team === 'varsity') return players;
   if (team === 'jv') {
     const varsityIds = playerIdsOnTeam('varsity');
-    return players.filter((p) => grade(p) === 11 && !varsityIds.has(p.id));
+    return players.filter((p) => grade(p) <= 11 && !varsityIds.has(p.id));
   }
   if (team === 'level3') {
     const upperIds = new Set([...playerIdsOnTeam('varsity'), ...playerIdsOnTeam('jv')]);
-    return players.filter((p) => grade(p) === 10 && !upperIds.has(p.id));
+    return players.filter((p) => grade(p) <= 10 && !upperIds.has(p.id));
   }
   // freshman
   return players.filter((p) => grade(p) === 9);
@@ -131,6 +132,11 @@ export function RosterBuilderTab({ initialTeam }: { initialTeam?: Team }) {
     await supabase.from('rosterCandidates').insert(candidate);
   }
 
+  async function tagAndAdd(playerId: string, position: Position) {
+    await supabase.from('players').update({ positions: [position] }).eq('id', playerId);
+    await quickAdd(playerId, position);
+  }
+
   const comparingCandidates =
     comparingPosition != null
       ? (candidatesByPosition.get(comparingPosition) ?? []).filter((c) => c.status === 'considering')
@@ -160,6 +166,7 @@ export function RosterBuilderTab({ initialTeam }: { initialTeam?: Team }) {
         candidatesByPlayer={candidatesByPlayer}
         cutPlayerIds={cutPlayerIds ?? new Set()}
         onQuickAdd={quickAdd}
+        onTagAndAdd={tagAndAdd}
       />
 
       <div className="space-y-4">
@@ -201,6 +208,7 @@ function AvailablePlayersWidget({
   candidatesByPlayer,
   cutPlayerIds,
   onQuickAdd,
+  onTagAndAdd,
 }: {
   team: Team;
   players: Player[];
@@ -208,6 +216,7 @@ function AvailablePlayersWidget({
   candidatesByPlayer: Map<string, RosterCandidate[]>;
   cutPlayerIds: Set<string>;
   onQuickAdd: (playerId: string, position: Position) => void;
+  onTagAndAdd: (playerId: string, position: Position) => void;
 }) {
   const assignedHere = new Set((candidatesByTeam.get(team) ?? []).map((c) => c.playerId));
   const eligible = cascadeEligiblePlayers(team, players, candidatesByTeam);
@@ -240,9 +249,29 @@ function AvailablePlayersWidget({
               {player.firstName} {player.lastName}
             </span>
             <span className="flex gap-1 flex-wrap">
-              {player.positions.length === 0 && (
-                <span className="text-xs text-gray-400 italic">no position tagged</span>
-              )}
+              {player.positions.length === 0 &&
+                (greyed ? (
+                  <span className="text-xs text-gray-400 italic">no position tagged</span>
+                ) : (
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      const pos = e.target.value as Position;
+                      if (pos) onTagAndAdd(player.id, pos);
+                      e.target.value = '';
+                    }}
+                    className="min-h-9 rounded-lg border border-gray-300 text-xs px-1 text-gray-700"
+                  >
+                    <option value="" disabled>
+                      Tag position…
+                    </option>
+                    {POSITIONS.map((pos) => (
+                      <option key={pos} value={pos}>
+                        {POSITION_LABELS[pos]}
+                      </option>
+                    ))}
+                  </select>
+                ))}
               {player.positions.map((pos) => (
                 <button
                   key={pos}

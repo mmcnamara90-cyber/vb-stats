@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
 import type { Player, Position, PositionTarget, RosterCandidate, Team } from '../../types';
-import { DEFAULT_POSITION_TARGETS, TEAM_LABELS, TEAM_LEVEL, TEAMS } from './teams';
+import { DEFAULT_POSITION_TARGETS, TEAM_LABELS, TEAM_LEVEL, TEAM_RANK, TEAMS } from './teams';
 import { POSITIONS, POSITION_LABELS } from './skills';
 import { PositionBadges } from './PositionBadges';
 import { computeLevelScopedSkillAverages, overallAvgFromSkills } from './composite';
@@ -312,11 +312,34 @@ function AddCandidatesModal({
   onClose: () => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
 
   const players = useLiveQuery(async () => {
-    const all = await db.players.orderBy('lastName').toArray();
-    return all.filter((p) => p.active && !existingPlayerIds.has(p.id));
+    const all = await db.players.toArray();
+    return all
+      .filter((p) => p.active && !existingPlayerIds.has(p.id))
+      .sort((a, b) => a.firstName.localeCompare(b.firstName));
   }, []);
+
+  // Confirmed-elsewhere lookup, across every team, so a player already locked
+  // into a higher-ranked team shows as unavailable here rather than letting a
+  // coach double-book them onto a lower team.
+  const confirmedElsewhere = useLiveQuery(
+    () => db.rosterCandidates.where('status').equals('confirmed').toArray(),
+    [],
+  );
+  const bestConfirmedTeamByPlayer = new Map<string, Team>();
+  for (const c of confirmedElsewhere ?? []) {
+    const existing = bestConfirmedTeamByPlayer.get(c.playerId);
+    if (!existing || TEAM_RANK[c.team] < TEAM_RANK[existing]) {
+      bestConfirmedTeamByPlayer.set(c.playerId, c.team);
+    }
+  }
+
+  const query = search.trim().toLowerCase();
+  const visiblePlayers = players?.filter(
+    (p) => !query || p.firstName.toLowerCase().startsWith(query) || p.lastName.toLowerCase().startsWith(query),
+  );
 
   function toggle(playerId: string) {
     setSelected((s) => {
@@ -346,17 +369,32 @@ function AddCandidatesModal({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
       <div className="w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-xl">
         <h2 className="text-xl font-bold mb-1">Add {POSITION_LABELS[position]} Candidates</h2>
-        <p className="text-sm text-gray-500 mb-4">{selected.size} selected</p>
+        <p className="text-sm text-gray-500 mb-3">{selected.size} selected</p>
+
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name…"
+          autoFocus
+          className="min-h-11 w-full rounded-lg border border-gray-300 px-3 mb-3 text-base focus:border-blue-500 focus:outline-none"
+        />
 
         <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 overflow-hidden max-h-80 overflow-y-auto mb-4">
-          {players?.map((p) => {
+          {visiblePlayers?.map((p) => {
             const checked = selected.has(p.id);
+            const lockedByTeam = bestConfirmedTeamByPlayer.get(p.id);
+            const locked = lockedByTeam != null && TEAM_RANK[lockedByTeam] < TEAM_RANK[team];
             return (
               <li key={p.id}>
                 <button
                   type="button"
+                  disabled={locked}
                   onClick={() => toggle(p.id)}
-                  className={`w-full min-h-11 flex items-center gap-3 px-4 py-2 text-left ${checked ? 'bg-blue-50' : ''}`}
+                  title={locked ? `Already confirmed on ${TEAM_LABELS[lockedByTeam]}` : undefined}
+                  className={`w-full min-h-11 flex items-center gap-3 px-4 py-2 text-left ${
+                    locked ? 'opacity-40 cursor-not-allowed' : checked ? 'bg-blue-50' : ''
+                  }`}
                 >
                   <span
                     className={`h-5 w-5 rounded border flex items-center justify-center shrink-0 text-xs ${
@@ -370,6 +408,11 @@ function AddCandidatesModal({
                       {p.firstName} {p.lastName}
                     </span>
                     <PositionBadges positions={p.positions} />
+                    {locked && (
+                      <span className="text-xs text-gray-500 whitespace-nowrap">
+                        Confirmed: {TEAM_LABELS[lockedByTeam]}
+                      </span>
+                    )}
                   </span>
                 </button>
               </li>
@@ -377,6 +420,9 @@ function AddCandidatesModal({
           })}
           {players !== undefined && players.length === 0 && (
             <li className="px-4 py-3 text-sm text-gray-400">Everyone active is already listed for this position.</li>
+          )}
+          {players !== undefined && players.length > 0 && visiblePlayers?.length === 0 && (
+            <li className="px-4 py-3 text-sm text-gray-400">No players match "{search}".</li>
           )}
         </ul>
 

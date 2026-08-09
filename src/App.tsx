@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { RosterScreen } from './features/roster/RosterScreen';
-import { OpenGymScreen } from './features/open-gym/OpenGymScreen';
 import { TryoutsScreen } from './features/tryouts/TryoutsScreen';
+import { RosterBuilderScreen } from './features/tryouts/RosterBuilderScreen';
 
-type Tab = 'roster' | 'tryouts' | 'open_gym';
+type Tab = 'roster' | 'tryouts' | 'roster_builder';
 
 function App() {
   const [tab, setTab] = useState<Tab>('roster');
@@ -28,19 +28,19 @@ function App() {
           Tryouts
         </button>
         <button
-          onClick={() => setTab('open_gym')}
+          onClick={() => setTab('roster_builder')}
           className={`flex-1 min-h-11 text-base font-medium ${
-            tab === 'open_gym' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'
+            tab === 'roster_builder' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'
           }`}
         >
-          Open Gym
+          Roster Builder
         </button>
       </nav>
 
       <main className="flex-1">
         {tab === 'roster' && <RosterScreen />}
         {tab === 'tryouts' && <TryoutsScreen />}
-        {tab === 'open_gym' && <OpenGymScreen />}
+        {tab === 'roster_builder' && <RosterBuilderScreen />}
       </main>
     </div>
   );

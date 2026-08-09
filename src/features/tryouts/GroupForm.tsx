@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Player, PlayerGroup } from '../../types';
 import { PositionBadges } from './PositionBadges';
+import { matchesPlayerQuery, playerGradeLabel } from '../../lib/playerSearch';
+import { PlayerSearchInput } from '../roster/PlayerSearchInput';
 
 export interface GroupFormValues {
   name: string;
@@ -22,11 +24,13 @@ export function GroupForm({
 }) {
   const [name, setName] = useState(group?.name ?? '');
   const [playerIds, setPlayerIds] = useState<string[]>(group?.playerIds ?? []);
+  const [search, setSearch] = useState('');
 
   const activePlayers = useLiveQuery(async () => {
     const { data } = await supabase.from('players').select('*').eq('active', true).order('lastName');
     return (data as Player[]) ?? [];
   }, []);
+  const visiblePlayers = activePlayers?.filter((p) => matchesPlayerQuery(p, search));
 
   function toggle(playerId: string) {
     setPlayerIds((ids) =>
@@ -63,8 +67,11 @@ export function GroupForm({
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Members ({playerIds.length} selected)
           </label>
+          <div className="mb-2">
+            <PlayerSearchInput value={search} onChange={setSearch} />
+          </div>
           <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 overflow-hidden max-h-64 overflow-y-auto">
-            {activePlayers?.map((p) => {
+            {visiblePlayers?.map((p) => {
               const checked = playerIds.includes(p.id);
               return (
                 <li key={p.id}>
@@ -87,11 +94,15 @@ export function GroupForm({
                         {p.firstName} {p.lastName}
                       </span>
                       <PositionBadges positions={p.positions} />
+                      <span className="text-xs text-gray-500">{playerGradeLabel(p)}</span>
                     </span>
                   </button>
                 </li>
               );
             })}
+            {visiblePlayers !== undefined && visiblePlayers.length === 0 && (
+              <li className="px-4 py-3 text-sm text-gray-400">No players match "{search}".</li>
+            )}
           </ul>
         </div>
 

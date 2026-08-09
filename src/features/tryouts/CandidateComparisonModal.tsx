@@ -4,6 +4,7 @@ import { PositionBadges } from './PositionBadges';
 import { overallAvgFromSkills } from './composite';
 import { RADAR_AXES, RADAR_AXIS_LABELS, skillAveragesToRadarProfile } from './radar';
 import { RadarChart } from './RadarChart';
+import { playerGradeLabel } from '../../lib/playerSearch';
 
 export function CandidateComparisonModal({
   position,
@@ -47,6 +48,7 @@ export function CandidateComparisonModal({
                     {player.firstName} {player.lastName}
                   </p>
                   <div className="flex items-center gap-2 flex-wrap mt-1">
+                    <span className="text-xs text-gray-500">{playerGradeLabel(player)}</span>
                     <PositionBadges positions={player.positions} />
                     <span className="text-xs text-gray-500">
                       {avg != null ? `Overall avg ${avg.toFixed(1)}` : 'No scores yet'}

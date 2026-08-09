@@ -6,19 +6,23 @@ import { PlayerForm, type PlayerFormValues } from './PlayerForm';
 import { ImportRosterModal } from './ImportRosterModal';
 import { POSITION_SHORT_LABELS } from '../tryouts/skills';
 import { gradeLabel, gradYearToGrade } from '../../lib/grade';
+import { matchesPlayerQuery } from '../../lib/playerSearch';
+import { PlayerSearchInput } from './PlayerSearchInput';
 
 export function RosterScreen() {
   const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [editingPlayer, setEditingPlayer] = useState<Player | undefined>(undefined);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [search, setSearch] = useState('');
 
-  const players = useLiveQuery(async () => {
+  const allPlayers = useLiveQuery(async () => {
     let query = supabase.from('players').select('*').order('lastName');
     if (showActiveOnly) query = query.eq('active', true);
     const { data } = await query;
     return (data as Player[]) ?? [];
   }, [showActiveOnly]);
+  const players = allPlayers?.filter((p) => matchesPlayerQuery(p, search));
 
   function openAddForm() {
     setEditingPlayer(undefined);
@@ -93,10 +97,16 @@ export function RosterScreen() {
         </button>
       </div>
 
+      <div className="mb-4">
+        <PlayerSearchInput value={search} onChange={setSearch} />
+      </div>
+
       {players === undefined && <p className="text-gray-500">Loading…</p>}
 
       {players !== undefined && players.length === 0 && (
-        <p className="text-gray-500">No players yet. Add your first player above.</p>
+        <p className="text-gray-500">
+          {search ? `No players match "${search}".` : 'No players yet. Add your first player above.'}
+        </p>
       )}
 
       <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 overflow-hidden">

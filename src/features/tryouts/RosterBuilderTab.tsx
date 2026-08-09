@@ -8,6 +8,8 @@ import { PositionBadges } from './PositionBadges';
 import { computeLevelScopedSkillAverages, overallAvgFromSkills } from './composite';
 import { CandidateComparisonModal } from './CandidateComparisonModal';
 import { gradYearToGrade } from '../../lib/grade';
+import { matchesPlayerQuery, playerGradeLabel } from '../../lib/playerSearch';
+import { PlayerSearchInput } from '../roster/PlayerSearchInput';
 
 const CYCLE_ID = currentTryoutCycleId();
 
@@ -218,11 +220,12 @@ function AvailablePlayersWidget({
   onQuickAdd: (playerId: string, position: Position) => void;
   onTagAndAdd: (playerId: string, position: Position) => void;
 }) {
+  const [search, setSearch] = useState('');
   const assignedHere = new Set((candidatesByTeam.get(team) ?? []).map((c) => c.playerId));
   const eligible = cascadeEligiblePlayers(team, players, candidatesByTeam);
 
   const pool = eligible
-    .filter((p) => !cutPlayerIds.has(p.id) && !assignedHere.has(p.id))
+    .filter((p) => !cutPlayerIds.has(p.id) && !assignedHere.has(p.id) && matchesPlayerQuery(p, search))
     .map((p) => ({
       player: p,
       greyed: (candidatesByPlayer.get(p.id) ?? []).some((c) => c.team !== team),
@@ -240,13 +243,22 @@ function AvailablePlayersWidget({
         </span>
       </div>
 
-      {pool.length === 0 && <p className="px-3 py-2 text-sm text-gray-400">No one currently eligible.</p>}
+      <div className="px-3 pt-2">
+        <PlayerSearchInput value={search} onChange={setSearch} />
+      </div>
+
+      {pool.length === 0 && (
+        <p className="px-3 py-2 text-sm text-gray-400">
+          {search ? `No one matches "${search}".` : 'No one currently eligible.'}
+        </p>
+      )}
 
       <ul className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
         {pool.map(({ player, greyed }) => (
           <li key={player.id} className="flex items-center justify-between gap-2 px-3 py-2 flex-wrap">
             <span className={`font-medium whitespace-nowrap ${greyed ? 'italic text-gray-400' : 'text-gray-900'}`}>
               {player.firstName} {player.lastName}
+              <span className="text-xs font-normal text-gray-500"> · {playerGradeLabel(player)}</span>
             </span>
             <span className="flex gap-1 flex-wrap">
               {player.positions.length === 0 &&
@@ -376,6 +388,7 @@ function PositionCard({
         <span className="flex items-center gap-2 flex-wrap min-w-0">
           <span className="font-medium text-gray-900 whitespace-nowrap">
             {player.firstName} {player.lastName}
+            <span className="text-xs font-normal text-gray-500"> · {playerGradeLabel(player)}</span>
           </span>
           <PositionBadges positions={otherPositions} />
           <span className="text-xs text-gray-500 whitespace-nowrap">
@@ -520,10 +533,7 @@ function AddCandidatesModal({
     if (!elsewhereTeamByPlayer.has(c.playerId)) elsewhereTeamByPlayer.set(c.playerId, c.team);
   }
 
-  const query = search.trim().toLowerCase();
-  const visiblePlayers = players?.filter(
-    (p) => !query || p.firstName.toLowerCase().startsWith(query) || p.lastName.toLowerCase().startsWith(query),
-  );
+  const visiblePlayers = players?.filter((p) => matchesPlayerQuery(p, search));
 
   function toggle(playerId: string) {
     setSelected((s) => {
@@ -553,14 +563,9 @@ function AddCandidatesModal({
         <h2 className="text-xl font-bold mb-1">Add {POSITION_LABELS[position]} Candidates</h2>
         <p className="text-sm text-gray-500 mb-3">{selected.size} selected</p>
 
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name…"
-          autoFocus
-          className="min-h-11 w-full rounded-lg border border-gray-300 px-3 mb-3 text-base focus:border-blue-500 focus:outline-none"
-        />
+        <div className="mb-3">
+          <PlayerSearchInput value={search} onChange={setSearch} />
+        </div>
 
         <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 overflow-hidden max-h-80 overflow-y-auto mb-4">
           {visiblePlayers?.map((p) => {
@@ -589,6 +594,7 @@ function AddCandidatesModal({
                     <span className="font-medium text-gray-900">
                       {p.firstName} {p.lastName}
                     </span>
+                    <span className="text-xs text-gray-500">{playerGradeLabel(p)}</span>
                     <PositionBadges positions={p.positions} />
                     {locked && (
                       <span className="text-xs text-gray-500 whitespace-nowrap">On {TEAM_LABELS[lockedByTeam]}</span>

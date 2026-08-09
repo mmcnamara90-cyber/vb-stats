@@ -4,6 +4,8 @@ import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Benchmark, DrillRun, Player, PlayerGroup, Session, SkillScore, TryoutDrill } from '../../types';
 import { benchmarkKey, computeHighScores } from './composite';
 import { POSITION_LABELS, SKILL_LABELS } from './skills';
+import { matchesPlayerQuery, playerGradeLabel } from '../../lib/playerSearch';
+import { PlayerSearchInput } from '../roster/PlayerSearchInput';
 
 const checkboxClass = (checked: boolean) =>
   `h-5 w-5 rounded border flex items-center justify-center shrink-0 text-xs ${
@@ -36,11 +38,13 @@ function StartDrillForm({
 }) {
   const [drillId, setDrillId] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
 
   const activePlayers = useLiveQuery(async () => {
     const { data } = await supabase.from('players').select('*').eq('active', true).order('lastName');
     return (data as Player[]) ?? [];
   }, []);
+  const visiblePlayers = activePlayers?.filter((p) => matchesPlayerQuery(p, search));
 
   const groups = useLiveQuery(async () => {
     const { data } = await supabase.from('playerGroups').select('*').order('name');
@@ -156,8 +160,12 @@ function StartDrillForm({
           </div>
         )}
 
+        <div className="mb-2">
+          <PlayerSearchInput value={search} onChange={setSearch} />
+        </div>
+
         <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 overflow-hidden">
-          {activePlayers?.map((p) => {
+          {visiblePlayers?.map((p) => {
             const checked = selected.has(p.id);
             return (
               <li key={p.id}>
@@ -173,10 +181,14 @@ function StartDrillForm({
                     {p.firstName} {p.lastName}
                     {p.jerseyNumber != null && <span className="text-gray-400"> #{p.jerseyNumber}</span>}
                   </span>
+                  <span className="text-xs text-gray-500">{playerGradeLabel(p)}</span>
                 </button>
               </li>
             );
           })}
+          {visiblePlayers !== undefined && visiblePlayers.length === 0 && (
+            <li className="px-4 py-3 text-sm text-gray-400">No players match "{search}".</li>
+          )}
         </ul>
       </div>
 
@@ -311,6 +323,7 @@ function ActiveDrillRun({
                   {player.jerseyNumber != null && (
                     <span className="text-gray-400"> #{player.jerseyNumber}</span>
                   )}
+                  <span className="text-gray-400"> · {playerGradeLabel(player)}</span>
                 </span>
                 <span className="text-sm text-gray-500 shrink-0">
                   {avg != null ? `Avg ${avg.toFixed(1)} (${entries.length})` : 'No taps yet'}

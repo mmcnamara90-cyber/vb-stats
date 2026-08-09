@@ -1,11 +1,16 @@
+import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Player } from '../../types';
 import { computeTryoutComposites } from './composite';
 import { POSITION_SHORT_LABELS, SKILLS, SKILL_SHORT_LABELS } from './skills';
+import { matchesPlayerQuery, playerGradeLabel } from '../../lib/playerSearch';
+import { PlayerSearchInput } from '../roster/PlayerSearchInput';
 
 export function RankingsTab() {
-  const rows = useLiveQuery(async () => {
+  const [search, setSearch] = useState('');
+
+  const allRows = useLiveQuery(async () => {
     const [{ data: players }, composites] = await Promise.all([
       supabase.from('players').select('*').eq('active', true).order('lastName'),
       computeTryoutComposites(),
@@ -15,17 +20,26 @@ export function RankingsTab() {
       .map((p) => ({ player: p, composite: composites.get(p.id)! }))
       .sort((a, b) => (b.composite.overallAvg ?? 0) - (a.composite.overallAvg ?? 0));
   }, []);
+  const rows = allRows?.filter(({ player }) => matchesPlayerQuery(player, search));
 
-  if (rows !== undefined && rows.length === 0) {
+  if (allRows !== undefined && allRows.length === 0) {
     return <p className="text-gray-500">No tryout scores yet. Score players in the Score tab first.</p>;
   }
 
   return (
-    <div className="overflow-x-auto -mx-4 px-4">
+    <div>
+      <div className="mb-3">
+        <PlayerSearchInput value={search} onChange={setSearch} />
+      </div>
+      {rows !== undefined && rows.length === 0 && (
+        <p className="text-gray-500">No players match "{search}".</p>
+      )}
+      <div className="overflow-x-auto -mx-4 px-4">
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-gray-200 text-left text-gray-500">
             <th className="py-2 pr-3 sticky left-0 bg-gray-50">Player</th>
+            <th className="py-2 px-2 text-left whitespace-nowrap">Grade</th>
             <th className="py-2 px-2 text-left whitespace-nowrap">Positions</th>
             <th className="py-2 px-2 text-center">Avg</th>
             <th className="py-2 px-2 text-center">#</th>
@@ -45,6 +59,7 @@ export function RankingsTab() {
                   <span className="text-gray-400"> #{player.jerseyNumber}</span>
                 ) : null}
               </td>
+              <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{playerGradeLabel(player)}</td>
               <td className="py-2 px-2 text-gray-500 whitespace-nowrap">
                 {player.positions.map((p) => POSITION_SHORT_LABELS[p]).join(', ') || '—'}
               </td>
@@ -61,6 +76,7 @@ export function RankingsTab() {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

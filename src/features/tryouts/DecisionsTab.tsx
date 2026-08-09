@@ -1,13 +1,18 @@
+import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Player, RosterDecision } from '../../types';
 import { computeTryoutComposites } from './composite';
 import { currentTryoutCycleId } from './skills';
+import { matchesPlayerQuery, playerGradeLabel } from '../../lib/playerSearch';
+import { PlayerSearchInput } from '../roster/PlayerSearchInput';
 
 const CYCLE_ID = currentTryoutCycleId();
 
 export function DecisionsTab() {
-  const rows = useLiveQuery(async () => {
+  const [search, setSearch] = useState('');
+
+  const allRows = useLiveQuery(async () => {
     const [{ data: players }, composites, { data: decisions }] = await Promise.all([
       supabase.from('players').select('*').eq('active', true).order('lastName'),
       computeTryoutComposites(),
@@ -24,6 +29,7 @@ export function DecisionsTab() {
       }))
       .sort((a, b) => (b.composite?.overallAvg ?? -1) - (a.composite?.overallAvg ?? -1));
   }, []);
+  const rows = allRows?.filter(({ player }) => matchesPlayerQuery(player, search));
 
   async function setDecision(playerId: string, madeTeam: boolean | null, compositeAvg: number | null) {
     const { data: existing } = await supabase
@@ -56,7 +62,14 @@ export function DecisionsTab() {
     <div>
       <p className="text-sm text-gray-500 mb-3">Cycle: {CYCLE_ID}</p>
 
-      {rows !== undefined && rows.length === 0 && <p className="text-gray-500">No active players.</p>}
+      <div className="mb-3">
+        <PlayerSearchInput value={search} onChange={setSearch} />
+      </div>
+
+      {allRows !== undefined && allRows.length === 0 && <p className="text-gray-500">No active players.</p>}
+      {allRows !== undefined && allRows.length > 0 && rows !== undefined && rows.length === 0 && (
+        <p className="text-gray-500">No players match "{search}".</p>
+      )}
 
       <ul className="space-y-2">
         {rows?.map(({ player, composite, decision }) => (
@@ -67,6 +80,7 @@ export function DecisionsTab() {
                 {player.jerseyNumber != null && (
                   <span className="text-gray-400"> #{player.jerseyNumber}</span>
                 )}
+                <span className="text-gray-400 font-normal text-sm"> · {playerGradeLabel(player)}</span>
               </span>
               <span className="text-sm text-gray-500">
                 Avg: {composite?.overallAvg != null ? composite.overallAvg.toFixed(1) : '—'}

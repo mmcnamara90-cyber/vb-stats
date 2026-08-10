@@ -346,7 +346,7 @@ function ActiveDrillRun({
         </button>
       </div>
 
-      <ul className="space-y-3">
+      <ul className="space-y-2">
         {players?.map((player) => {
           const entries = scoresByPlayer?.get(player.id) ?? [];
           const avg = entries.length
@@ -372,7 +372,7 @@ function ActiveDrillRun({
               : undefined;
 
           return (
-            <li key={player.id} className="rounded-lg border border-gray-200 p-3">
+            <li key={player.id} className="rounded-lg border border-gray-200 p-2">
               <div className="flex items-center justify-between mb-1 gap-2">
                 <span className="font-medium text-gray-900">
                   {player.firstName} {player.lastName}
@@ -387,7 +387,7 @@ function ActiveDrillRun({
               </div>
 
               {(targets.length > 0 || bestForPlayer) && (
-                <p className="text-xs text-gray-500 mb-2">
+                <p className="text-xs text-gray-500 mb-1">
                   {targets.length > 0 && (
                     <>
                       Target:{' '}
@@ -406,14 +406,14 @@ function ActiveDrillRun({
               {/* Always rendered (even with 0 taps) and non-wrapping so this row
                   reserves a constant height — the card can't resize as taps
                   are recorded. */}
-              <div className="flex items-center gap-1 mb-2 min-h-11 overflow-x-auto">
+              <div className="flex items-center gap-1 mb-1 min-h-9 overflow-x-auto">
                 {entries.map((e) => (
                   <button
                     key={e.id}
                     type="button"
                     onClick={() => removeTap(e.id)}
                     title="Tap to remove"
-                    className="min-h-11 min-w-11 shrink-0 px-2 rounded bg-gray-100 text-gray-700 text-sm font-medium active:bg-red-100"
+                    className="min-h-9 min-w-9 shrink-0 px-2 rounded bg-gray-100 text-gray-700 text-sm font-medium active:bg-red-100"
                   >
                     {e.score}
                   </button>
@@ -426,7 +426,7 @@ function ActiveDrillRun({
                     key={n}
                     type="button"
                     onClick={() => addTap(player.id, n)}
-                    className="min-h-16 sm:min-h-20 rounded-xl text-2xl font-bold border-2 bg-white text-gray-700 border-gray-300 active:bg-blue-600 active:text-white active:border-blue-600"
+                    className="min-h-12 sm:min-h-14 rounded-xl text-2xl font-bold border-2 bg-white text-gray-700 border-gray-300 active:bg-blue-600 active:text-white active:border-blue-600"
                   >
                     {n}
                   </button>

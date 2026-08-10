@@ -18,6 +18,15 @@ export const TEAM_LEVEL: Record<Team, TryoutLevel> = {
   level3: 'lower',
 };
 
+// Most to least selective — drives the "push down a level" action (Varsity ->
+// JV -> Level 3 -> Freshman) and cascade eligibility elsewhere.
+export const TEAM_ORDER: Team[] = ['varsity', 'jv', 'level3', 'freshman'];
+
+export function nextLowerTeam(team: Team): Team | null {
+  const i = TEAM_ORDER.indexOf(team);
+  return i >= 0 && i < TEAM_ORDER.length - 1 ? TEAM_ORDER[i + 1] : null;
+}
+
 // Starting point for a team's depth chart — editable per team afterward.
 export const DEFAULT_POSITION_TARGETS: Record<Position, { minCount: number; targetCount: number }> = {
   S: { minCount: 2, targetCount: 3 },

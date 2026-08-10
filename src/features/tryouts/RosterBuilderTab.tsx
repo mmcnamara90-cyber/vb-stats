@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Player, Position, PositionTarget, RosterCandidate, Team } from '../../types';
-import { DEFAULT_POSITION_TARGETS, TEAM_LABELS, TEAM_LEVEL, TEAMS } from './teams';
+import { DEFAULT_POSITION_TARGETS, TEAM_LABELS, TEAM_LEVEL, TEAMS, nextLowerTeam } from './teams';
 import { POSITIONS, POSITION_LABELS, POSITION_SHORT_LABELS, currentTryoutCycleId } from './skills';
 import { PositionBadges } from './PositionBadges';
 import { computeLevelScopedSkillAverages, overallAvgFromSkills } from './composite';
@@ -378,9 +378,28 @@ function PositionCard({
     await supabase.from('rosterCandidates').delete().eq('id', candidateId);
   }
 
+  // Moves a candidate off this team and onto the next-lower team's list for
+  // the same position, as "considering" — so pushing someone off Varsity
+  // lands them straight on JV's list instead of vanishing and needing the
+  // JV coach to re-add them from scratch.
+  async function pushDown(candidate: RosterCandidate) {
+    const lowerTeam = nextLowerTeam(team);
+    if (!lowerTeam) return;
+    await supabase.from('rosterCandidates').delete().eq('id', candidate.id);
+    await supabase.from('rosterCandidates').insert({
+      id: crypto.randomUUID(),
+      team: lowerTeam,
+      position: candidate.position,
+      playerId: candidate.playerId,
+      status: 'considering',
+      createdAt: new Date().toISOString(),
+    });
+  }
+
   function renderRow(candidate: RosterCandidate, kind: 'confirmed' | 'considering') {
     const player = playersById.get(candidate.playerId);
     if (!player) return null;
+    const lowerTeam = nextLowerTeam(team);
     const avg = overallAvgFromSkills(skillsByPlayer.get(player.id) ?? {});
     const otherPositions = player.positions.filter((p) => p !== position);
     return (
@@ -412,6 +431,16 @@ function PositionCard({
               className="min-h-9 px-2 rounded-lg border border-gray-300 text-gray-700 text-xs font-medium"
             >
               Unconfirm
+            </button>
+          )}
+          {lowerTeam && (
+            <button
+              type="button"
+              onClick={() => pushDown(candidate)}
+              title={`Move to ${TEAM_LABELS[lowerTeam]} (${POSITION_LABELS[position]}), considering`}
+              className="min-h-9 px-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-xs font-medium"
+            >
+              ↓ {TEAM_LABELS[lowerTeam]}
             </button>
           )}
           <button

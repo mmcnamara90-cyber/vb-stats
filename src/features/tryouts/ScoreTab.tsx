@@ -1,9 +1,20 @@
 import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
-import type { Benchmark, DrillRun, Player, PlayerGroup, Session, SkillScore, TryoutDrill } from '../../types';
+import type {
+  Benchmark,
+  DrillRun,
+  Player,
+  PlayerGroup,
+  Position,
+  RosterCandidate,
+  Session,
+  SkillScore,
+  TryoutDrill,
+} from '../../types';
 import { benchmarkKey, computeHighScores } from './composite';
-import { POSITION_LABELS, SKILL_LABELS } from './skills';
+import { POSITIONS, POSITION_LABELS, POSITION_SHORT_LABELS, SKILL_LABELS } from './skills';
+import { TEAMS, TEAM_LEVEL } from './teams';
 import { matchesPlayerQuery, playerGradeLabel } from '../../lib/playerSearch';
 import { PlayerSearchInput } from '../roster/PlayerSearchInput';
 
@@ -57,6 +68,31 @@ function StartDrillForm({
     for (const p of (data as { tags: string[] }[] | null) ?? []) for (const t of p.tags) set.add(t);
     return [...set].sort();
   }, []);
+
+  // Quick-select by position: "all candidates being considered for DS/Lib"
+  // etc., scoped to whichever teams feed this session's tryout pool (upper
+  // -> varsity+jv, lower -> freshman+level3) — always live off current
+  // rosterCandidates, never a stale saved list.
+  const level = session?.level;
+  const candidates = useLiveQuery(async () => {
+    if (!level) return [] as RosterCandidate[];
+    const teamsForLevel = TEAMS.filter((t) => TEAM_LEVEL[t] === level);
+    const { data } = await supabase.from('rosterCandidates').select('*').in('team', teamsForLevel);
+    return (data as RosterCandidate[]) ?? [];
+  }, [level]);
+
+  const positionCandidateIds = new Map<Position, Set<string>>();
+  for (const c of candidates ?? []) {
+    const set = positionCandidateIds.get(c.position) ?? new Set<string>();
+    set.add(c.playerId);
+    positionCandidateIds.set(c.position, set);
+  }
+
+  function selectByPosition(position: Position) {
+    const ids = positionCandidateIds.get(position);
+    if (!ids) return;
+    setSelected((s) => new Set([...s, ...ids]));
+  }
 
   function togglePlayer(playerId: string) {
     setSelected((s) => {
@@ -142,6 +178,26 @@ function StartDrillForm({
                 + {g.name}
               </button>
             ))}
+          </div>
+        )}
+
+        {level && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {POSITIONS.map((pos) => {
+              const count = positionCandidateIds.get(pos)?.size ?? 0;
+              if (count === 0) return null;
+              return (
+                <button
+                  key={pos}
+                  type="button"
+                  onClick={() => selectByPosition(pos)}
+                  title={`${POSITION_LABELS[pos]} candidates on ${level === 'upper' ? 'Varsity/JV' : 'Freshman/Level 3'}`}
+                  className="min-h-11 px-3 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-700 text-sm font-medium"
+                >
+                  + {POSITION_SHORT_LABELS[pos]} ({count})
+                </button>
+              );
+            })}
           </div>
         )}
 

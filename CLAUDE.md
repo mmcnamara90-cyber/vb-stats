@@ -173,7 +173,79 @@ Grade/Position/Player Phone #/Player Email columns). Position mapping:
 `OH`/`MB`/`Setter→S`/`OPP`/`DS/Lib→DS_L`, `Unsure` dropped. Skips rows where
 Grade is "Coach" or First/Last starts with `(` (Airtable's unset-select
 placeholder). Matches existing players by case-insensitive first+last name
-for upsert-on-reimport.
+for upsert-on-reimport. `src/lib/csv.ts` holds the shared CSV parser
+(`parseCsv`/`parseCsvObjects`/`parseCsvHeader`) — also used by the score
+importer below.
+
+## Tryout score CSV import (SoloStats or similar)
+
+Tryouts tab → **Import** sub-tab (`ImportScoresTab.tsx` + `importScores.ts`).
+Generic column-mapper, not hardcoded to one export format, since real
+exports vary by report type (passing, serving, hitting, ...):
+
+- Wizard: upload → pick session date + tryout level (creates/reuses that
+  day's `Session` via `getOrCreateSessionForDate` in `dailySession.ts`,
+  which import can target a past date, not just "today") → map each CSV
+  column to Ignore / an existing `TryoutDrill` / a new drill (created on
+  commit) → review every player match → insert `SkillScore` rows.
+- **Player matching**: first-name keyed (`matchPlayerByName` in
+  `importScores.ts`), first whitespace token of the mapped name column.
+  A mapped last-name column narrows ambiguous first-name matches (the
+  roster has real duplicate first names, e.g. two "Taylor"s) automatically;
+  otherwise the coach resolves ambiguous/no-match rows by hand before
+  committing — no silent guessing.
+- Rows whose mapped name is blank or `"Total"` (case-insensitive) are
+  auto-skipped — matches SoloStats' trailing summary/blank rows.
+- `skillScores.score` was widened from Postgres `integer` to `numeric` (and
+  `SkillScore.score` from `0 | 1 | 2 | 3` to `number` in `types.ts`) so
+  imported pre-averaged ratings (e.g. `1.82`) store exactly; manual taps via
+  `ScoreTab` still only ever write 0-3.
+- Imported `scoredAt` is set to noon UTC on the chosen session date (not
+  "now"), to avoid the timezone off-by-one noted below.
+- Last-used column mapping is cached in `localStorage`, keyed by the sorted
+  CSV header signature, so re-importing the same report shape next week
+  pre-fills.
+
+## Lineup Simulator
+
+Roster Builder screen → **🏐 Lineups** toggle (next to the Roster/team
+switcher in `RosterBuilderScreen.tsx`) → `LineupSimulatorTab.tsx`. An
+evaluation scratchpad distinct from the legacy `Lineup` type (see below) —
+not tied to a live game/set.
+
+- **Data**: `lineups` table (`SavedLineup`/`LineupSub` in `types.ts`) — one
+  row per named, saved lineup per team: `zoneAssignments` (zone 1-6 →
+  playerId, Rotation 1 only) + `subs` (explicit "Player A subs for Player
+  B" list, separate from live swapping). Allow-all RLS + realtime, same
+  pattern as every other table.
+- **Court grid** matches the coach's sketch exactly: front row (at the net)
+  is zones 4, 3, 2 left-to-right; back row is zones 5, 6, 1 left-to-right.
+- **Placement**: tap-to-place, not drag-and-drop (mobile-first, touch-drag
+  is unreliable) — tap a bench player, then a court cell to place them
+  (bumping any occupant back to the bench); tap a filled cell with nothing
+  selected to clear it. Bench pool is that team's `rosterCandidates`
+  (considering + confirmed), not every active player.
+- **Rotations 2-6 are derived, not independently editable** —
+  `zoneAssignmentsForRotation` in `lineupRotation.ts` applies the standard
+  clockwise rotation rule (verified against `docs/volleyball-domain-knowledge.md`
+  §1.2: player in zone *p* moves to zone *p−1*, wrapping 1→6). Only
+  Rotation 1 is the source of truth; switching to 2-6 shows a read-only
+  computed grid.
+- **Radar popover** (`PlayerRadarPopover.tsx`): a small 📊 icon + modal
+  reusing `RadarChart`/`radar.ts`, on every bench/court/sub row — lets a
+  coach check a player's 5-axis profile without navigating away.
+
+## Volleyball domain knowledge
+
+`docs/volleyball-domain-knowledge.md` — a coach-authored reference brief on
+NFHS (US high school) rules, court/rotation mechanics, libero rules (which
+changed for 2026-27), substitution limits, and terminology, plus a forward-
+looking data-model sketch (Match/Set/RotationState/StatEvent/
+ServeReceiveFormation/TryoutEvaluation) for the in-game stat tracking and
+serve-receive planning phases that don't exist yet (see "Things NOT done"
+below). Read it before building anything in that direction — it also flags
+several open decisions (ruleset scope beyond NFHS, stat-capture granularity,
+access control for minors' data) that are the coach's call, not assumed.
 
 ## Things NOT done (known gaps / possible follow-ups)
 
@@ -185,4 +257,10 @@ for upsert-on-reimport.
   fixed.
 - `Note`/`Lineup`/`StatEvent`/`Drill`/`PracticePlan` types exist for a future
   phase (in-game stat tracking, practice planning) but have no UI or DB
-  tables yet.
+  tables yet. (Don't confuse the legacy `Lineup` type here with the
+  unrelated, actually-wired `SavedLineup`/lineups table used by the Lineup
+  Simulator above.) `docs/volleyball-domain-knowledge.md` has the design
+  brief for this phase — Match/Set/RotationState/StatEvent/
+  ServeReceiveFormation entities, current-rules-year libero/substitution
+  rules, and a list of open decisions (ruleset scope, stat-capture
+  granularity, access control) to make before building it.

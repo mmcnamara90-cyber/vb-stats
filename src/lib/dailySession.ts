@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
 import { useSupabaseQuery } from './useSupabaseQuery';
-import type { Session, SessionType } from '../types';
+import type { Session, SessionType, TryoutLevel } from '../types';
 
 export function todayIso(): string {
   const d = new Date();
@@ -15,7 +15,16 @@ export function todayIso(): string {
 // can't race and create two sessions for the same day from the same tab.
 const getOrCreateCache = new Map<string, Promise<Session>>();
 
-function getOrCreateSession(type: SessionType, date: string): Promise<Session> {
+// Gets (or creates) the one session for a given type+date — same "one
+// session per day" model `useTodaysSession` relies on, but for an arbitrary
+// date (e.g. importing a past tryout day's CSV, not necessarily today).
+// When `level` is passed and the session doesn't already have one set, it's
+// upserted — imported scores need a level for benchmarks/radar to scope by.
+export function getOrCreateSessionForDate(
+  type: SessionType,
+  date: string,
+  level?: TryoutLevel,
+): Promise<Session> {
   const key = `${type}:${date}`;
   let promise = getOrCreateCache.get(key);
   if (!promise) {
@@ -35,7 +44,17 @@ function getOrCreateSession(type: SessionType, date: string): Promise<Session> {
     })();
     getOrCreateCache.set(key, promise);
   }
-  return promise;
+  return promise.then(async (session) => {
+    if (level && !session.level) {
+      await supabase.from('sessions').update({ level }).eq('id', session.id);
+      return { ...session, level };
+    }
+    return session;
+  });
+}
+
+function getOrCreateSession(type: SessionType, date: string): Promise<Session> {
+  return getOrCreateSessionForDate(type, date);
 }
 
 export function useTodaysSession(type: SessionType): Session | undefined {

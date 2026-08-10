@@ -75,7 +75,9 @@ export interface SkillScore {
   drillId: string;
   runId?: string;            // which DrillRun this tap was recorded during
   skill: Skill;              // denormalized from the drill for fast grouping
-  score: 0 | 1 | 2 | 3;
+  // 0-3 for manually-tapped scores (ScoreTab); imported scores (CSV import)
+  // may be a decimal average (e.g. 1.82) — the DB column is `numeric`.
+  score: number;
   notes?: string;
   scoredAt: string;         // ISO datetime
 }
@@ -161,6 +163,27 @@ export interface Lineup {
   zoneAssignments: Record<CourtZone, string>; // zone -> playerId
   liberoPlayerId?: string;
   liberoReplacesPlayerId?: string; // who the libero swaps for
+}
+
+// ===== Lineup Simulator (Roster Builder sub-view, evaluation tool) =====
+// Distinct from `Lineup` above: this isn't tied to a live game/set, just a
+// coach's saved "what would this starting 6 look like" experiment per team.
+
+export interface LineupSub {
+  id: string;
+  inPlayerId: string;
+  outPlayerId: string;
+  note?: string;
+}
+
+export interface SavedLineup {
+  id: string;
+  team: Team;
+  name: string;
+  zoneAssignments: Partial<Record<CourtZone, string>>; // zone -> playerId, rotation 1 only; 2-6 are derived
+  subs: LineupSub[];
+  createdAt: string;        // ISO datetime
+  updatedAt: string;        // ISO datetime
 }
 
 // ===== Live stats =====

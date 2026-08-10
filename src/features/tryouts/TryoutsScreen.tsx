@@ -8,14 +8,16 @@ import { ScoreTab } from './ScoreTab';
 import { RankingsTab } from './RankingsTab';
 import { DecisionsTab } from './DecisionsTab';
 import { BenchmarksTab } from './BenchmarksTab';
+import { ImportScoresTab } from './ImportScoresTab';
 import { TRYOUT_LEVELS, TRYOUT_LEVEL_LABELS } from './skills';
 
-type SubTab = 'drills' | 'groups' | 'score' | 'rankings' | 'benchmarks' | 'decisions';
+type SubTab = 'drills' | 'groups' | 'score' | 'import' | 'rankings' | 'benchmarks' | 'decisions';
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'drills', label: 'Drills' },
   { id: 'groups', label: 'Groups' },
   { id: 'score', label: 'Score' },
+  { id: 'import', label: 'Import' },
   { id: 'rankings', label: 'Rankings' },
   { id: 'benchmarks', label: 'Benchmarks' },
   { id: 'decisions', label: 'Decisions' },
@@ -90,6 +92,7 @@ export function TryoutsScreen() {
       {subTab === 'drills' && <DrillsTab />}
       {subTab === 'groups' && <GroupsTab />}
       {subTab === 'score' && <ScoreTab session={session} />}
+      {subTab === 'import' && <ImportScoresTab />}
       {subTab === 'rankings' && <RankingsTab />}
       {subTab === 'benchmarks' && <BenchmarksTab />}
       {subTab === 'decisions' && <DecisionsTab />}

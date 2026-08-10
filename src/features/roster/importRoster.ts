@@ -46,10 +46,16 @@ export interface ImportRow {
   contactPhone?: string;
   contactEmail?: string;
   skippedReason?: string;
+  // Airtable's "Registered" column is a checkbox — exports as a non-empty
+  // value (e.g. "checked") when checked, blank when not. Not every export
+  // has this column at all, so a CSV without it leaves everyone registered
+  // (no forced deactivation) rather than deactivating the whole roster.
+  registered: boolean;
 }
 
 export function buildImportRows(records: Record<string, string>[]): ImportRow[] {
   const result: ImportRow[] = [];
+  const hasRegisteredColumn = records.some((rec) => 'Registered' in rec);
   for (const rec of records) {
     const firstName = (rec['First'] ?? '').trim();
     const lastName = (rec['Last'] ?? '').trim();
@@ -66,6 +72,7 @@ export function buildImportRows(records: Record<string, string>[]): ImportRow[] 
       positions: mapPositions(rec['Position'] ?? ''),
       contactPhone: (rec['Player Phone #'] ?? '').trim() || undefined,
       contactEmail: (rec['Player Email'] ?? '').trim() || undefined,
+      registered: !hasRegisteredColumn || (rec['Registered'] ?? '').trim() !== '',
     });
   }
   return result;

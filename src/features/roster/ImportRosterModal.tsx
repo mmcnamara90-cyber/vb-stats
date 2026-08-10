@@ -45,7 +45,7 @@ export function ImportRosterModal({ onClose }: { onClose: () => void }) {
         contactPhone: row.contactPhone,
         contactEmail: row.contactEmail,
         tags: [],
-        active: true,
+        active: row.registered,
         createdAt: new Date().toISOString(),
       }));
       await supabase.from('players').insert(newPlayers);
@@ -58,6 +58,11 @@ export function ImportRosterModal({ onClose }: { onClose: () => void }) {
           positions: row.positions.length > 0 ? row.positions : existing.positions,
           contactPhone: row.contactPhone ?? existing.contactPhone,
           contactEmail: row.contactEmail ?? existing.contactEmail,
+          // One-directional: an unregistered row deactivates an existing
+          // player, but being registered never force-reactivates someone —
+          // that could undo an intentional cut/graduation for an unrelated
+          // reason. Leave `active` untouched when registered.
+          ...(row.registered ? {} : { active: false }),
         })
         .eq('id', existing.id);
     }
@@ -65,13 +70,17 @@ export function ImportRosterModal({ onClose }: { onClose: () => void }) {
     setDone(true);
   }
 
+  const deactivateCount = (plan?.toUpdate ?? []).filter(({ row, existing }) => !row.registered && existing.active).length;
+  const newInactiveCount = (plan?.toCreate ?? []).filter((row) => !row.registered).length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
       <div className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-xl">
         <h2 className="text-xl font-bold mb-1">Import Roster</h2>
         <p className="text-sm text-gray-500 mb-4">
-          Upload the Airtable CSV export. Only name, grade, position, and contact info are imported —
-          team assignments, cut/keep status, and family/parent info are left out.
+          Upload the Airtable CSV export. Name, grade, position, and contact info are imported —
+          team assignments, cut/keep status, and family/parent info are left out. If the CSV has a
+          "Registered" column, blank rows deactivate that player (never auto-reactivates someone).
         </p>
 
         {!done && (
@@ -94,6 +103,13 @@ export function ImportRosterModal({ onClose }: { onClose: () => void }) {
               {plan.toUpdate.length} existing player{plan.toUpdate.length === 1 ? '' : 's'} updated
               {skippedCount > 0 && ` · ${skippedCount} row${skippedCount === 1 ? '' : 's'} skipped (coach/blank)`}
             </p>
+            {(deactivateCount > 0 || newInactiveCount > 0) && (
+              <p className="text-sm text-amber-700 mb-2">
+                Not registered: {deactivateCount > 0 && `${deactivateCount} existing player${deactivateCount === 1 ? '' : 's'} will be deactivated`}
+                {deactivateCount > 0 && newInactiveCount > 0 && ' · '}
+                {newInactiveCount > 0 && `${newInactiveCount} new player${newInactiveCount === 1 ? '' : 's'} added as inactive`}
+              </p>
+            )}
             <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 overflow-hidden max-h-64 overflow-y-auto">
               {[...plan.toCreate.map((row) => ({ row, isNew: true })), ...plan.toUpdate.map(({ row }) => ({ row, isNew: false }))]
                 .sort((a, b) => a.row.lastName.localeCompare(b.row.lastName))
@@ -102,6 +118,7 @@ export function ImportRosterModal({ onClose }: { onClose: () => void }) {
                     <span className="font-medium text-gray-900">
                       {row.firstName} {row.lastName}
                       {!isNew && <span className="text-xs text-blue-600 ml-1">(update)</span>}
+                      {!row.registered && <span className="text-xs text-amber-600 ml-1">(not registered)</span>}
                     </span>
                     <span className="text-gray-500 text-xs text-right">
                       {row.positions.map((p) => POSITION_LABELS[p]).join(', ') || 'no position'} ·{' '}

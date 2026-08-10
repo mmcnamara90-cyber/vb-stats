@@ -27,6 +27,10 @@ export function nextLowerTeam(team: Team): Team | null {
   return i >= 0 && i < TEAM_ORDER.length - 1 ? TEAM_ORDER[i + 1] : null;
 }
 
+// Typical final roster size — occasionally a team carries more or fewer,
+// but this is the number coaches are building toward by default.
+export const TEAM_ROSTER_SIZE = 12;
+
 // Starting point for a team's depth chart — editable per team afterward.
 export const DEFAULT_POSITION_TARGETS: Record<Position, { minCount: number; targetCount: number }> = {
   S: { minCount: 2, targetCount: 3 },

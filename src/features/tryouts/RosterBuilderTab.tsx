@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Player, Position, PositionTarget, RosterCandidate, Team } from '../../types';
-import { DEFAULT_POSITION_TARGETS, TEAM_LABELS, TEAM_LEVEL, TEAMS, nextLowerTeam } from './teams';
+import { DEFAULT_POSITION_TARGETS, TEAM_LABELS, TEAM_LEVEL, TEAM_ROSTER_SIZE, TEAMS, nextLowerTeam } from './teams';
 import { POSITIONS, POSITION_LABELS, POSITION_SHORT_LABELS, currentTryoutCycleId } from './skills';
 import { PositionBadges } from './PositionBadges';
 import { computeLevelScopedSkillAverages, overallAvgFromSkills } from './composite';
@@ -144,21 +144,34 @@ export function RosterBuilderTab({ initialTeam }: { initialTeam?: Team }) {
       ? (candidatesByPosition.get(comparingPosition) ?? []).filter((c) => c.status === 'considering')
       : [];
 
+  const totalConfirmed = (candidates ?? []).filter((c) => c.status === 'confirmed').length;
+  const rosterColor =
+    totalConfirmed >= TEAM_ROSTER_SIZE
+      ? 'bg-emerald-100 text-emerald-700'
+      : totalConfirmed >= TEAM_ROSTER_SIZE - 2
+        ? 'bg-amber-100 text-amber-700'
+        : 'bg-rose-100 text-rose-700';
+
   return (
     <div>
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {TEAMS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTeam(t)}
-            className={`min-h-11 px-4 rounded-lg text-sm font-medium border ${
-              team === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
-            }`}
-          >
-            {TEAM_LABELS[t]}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
+          {TEAMS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTeam(t)}
+              className={`min-h-11 px-4 rounded-lg text-sm font-medium border ${
+                team === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+              }`}
+            >
+              {TEAM_LABELS[t]}
+            </button>
+          ))}
+        </div>
+        <span className={`text-sm font-semibold px-3 py-1.5 rounded-full ${rosterColor}`}>
+          {totalConfirmed} / {TEAM_ROSTER_SIZE} confirmed
+        </span>
       </div>
 
       <AvailablePlayersWidget

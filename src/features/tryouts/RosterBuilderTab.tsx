@@ -394,6 +394,30 @@ function PositionCard({
     });
   }
 
+  // Re-tags a candidate to a different position on this same team, keeping
+  // their confirmed/considering status — the card just moves to the other
+  // position's card. Also tags the player's profile with the new position
+  // (additive, existing tags untouched) so it's reflected roster-wide, not
+  // just on this board.
+  async function movePosition(candidate: RosterCandidate, newPosition: Position, player: Player) {
+    if (newPosition === candidate.position) return;
+    if (!player.positions.includes(newPosition)) {
+      await supabase
+        .from('players')
+        .update({ positions: [...player.positions, newPosition] })
+        .eq('id', player.id);
+    }
+    await supabase.from('rosterCandidates').delete().eq('id', candidate.id);
+    await supabase.from('rosterCandidates').insert({
+      id: crypto.randomUUID(),
+      team,
+      position: newPosition,
+      playerId: candidate.playerId,
+      status: candidate.status,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
   function renderRow(candidate: RosterCandidate, kind: 'confirmed' | 'considering') {
     const player = playersById.get(candidate.playerId);
     if (!player) return null;
@@ -441,6 +465,25 @@ function PositionCard({
               ↓ {TEAM_LABELS[lowerTeam]}
             </button>
           )}
+          <select
+            defaultValue=""
+            title="Move to a different position on this team"
+            onChange={(e) => {
+              const pos = e.target.value as Position;
+              if (pos) movePosition(candidate, pos, player);
+              e.target.value = '';
+            }}
+            className="min-h-9 rounded-lg border border-gray-300 text-xs px-1 text-gray-700"
+          >
+            <option value="" disabled>
+              Move to…
+            </option>
+            {POSITIONS.filter((pos) => pos !== position).map((pos) => (
+              <option key={pos} value={pos}>
+                {POSITION_LABELS[pos]}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             onClick={() => removeCandidate(candidate.id)}

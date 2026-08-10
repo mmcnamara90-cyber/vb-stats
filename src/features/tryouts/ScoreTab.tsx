@@ -273,11 +273,22 @@ function ActiveDrillRun({
   const playerIdsKey = run.playerIds.join(',');
   const level = session?.level;
 
+  // Ordered to match run.playerIds (not alphabetical) so the coach's
+  // reordering (see movePlayer below) is what actually renders.
   const players = useLiveQuery(async () => {
     if (run.playerIds.length === 0) return [];
     const { data } = await supabase.from('players').select('*').in('id', run.playerIds);
-    return ((data as Player[]) ?? []).sort((a, b) => a.lastName.localeCompare(b.lastName));
+    const byId = new Map(((data as Player[]) ?? []).map((p) => [p.id, p]));
+    return run.playerIds.map((id) => byId.get(id)).filter((p): p is Player => !!p);
   }, [playerIdsKey]);
+
+  async function movePlayer(index: number, direction: -1 | 1) {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= run.playerIds.length) return;
+    const next = [...run.playerIds];
+    [next[index], next[newIndex]] = [next[newIndex], next[index]];
+    await supabase.from('drillRuns').update({ playerIds: next }).eq('id', run.id);
+  }
 
   const benchmarks = useLiveQuery(async () => {
     if (!level) return [] as Benchmark[];
@@ -347,7 +358,7 @@ function ActiveDrillRun({
       </div>
 
       <ul className="space-y-2">
-        {players?.map((player) => {
+        {players?.map((player, index) => {
           const entries = scoresByPlayer?.get(player.id) ?? [];
           const avg = entries.length
             ? entries.reduce((a, e) => a + e.score, 0) / entries.length
@@ -374,15 +385,35 @@ function ActiveDrillRun({
           return (
             <li key={player.id} className="rounded-lg border border-gray-200 p-2">
               <div className="flex items-center justify-between mb-1 gap-2">
-                <span className="font-medium text-gray-900">
+                <span className="font-medium text-gray-900 min-w-0 truncate">
                   {player.firstName} {player.lastName}
                   {player.jerseyNumber != null && (
                     <span className="text-gray-400"> #{player.jerseyNumber}</span>
                   )}
                   <span className="text-gray-400"> · {playerGradeLabel(player)}</span>
                 </span>
-                <span className="text-sm text-gray-500 shrink-0">
-                  {avg != null ? `Avg ${avg.toFixed(1)} (${entries.length})` : 'No taps yet'}
+                <span className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-sm text-gray-500">
+                    {avg != null ? `Avg ${avg.toFixed(1)} (${entries.length})` : 'No taps yet'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => movePlayer(index, -1)}
+                    disabled={index === 0}
+                    title="Move up"
+                    className="min-h-9 min-w-9 rounded-lg border border-gray-200 text-gray-500 text-xs disabled:opacity-30"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => movePlayer(index, 1)}
+                    disabled={index === players.length - 1}
+                    title="Move down"
+                    className="min-h-9 min-w-9 rounded-lg border border-gray-200 text-gray-500 text-xs disabled:opacity-30"
+                  >
+                    ↓
+                  </button>
                 </span>
               </div>
 

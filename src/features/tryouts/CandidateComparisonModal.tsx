@@ -1,21 +1,22 @@
-import type { Player, Position, RosterCandidate, Skill } from '../../types';
-import { POSITION_LABELS } from './skills';
+import type { Player, Skill } from '../../types';
 import { PositionBadges } from './PositionBadges';
 import { overallAvgFromSkills } from './composite';
 import { RADAR_AXES, RADAR_AXIS_LABELS, skillAveragesToRadarProfile } from './radar';
 import { RadarChart } from './RadarChart';
 import { playerGradeLabel } from '../../lib/playerSearch';
 
+// Generic side-by-side comparison — not tied to one position or team, so it
+// works equally for "compare these same-position candidates," "compare
+// everyone under consideration for this team," or an ad-hoc hand-picked set
+// spanning multiple positions.
 export function CandidateComparisonModal({
-  position,
-  candidates,
-  playersById,
+  title,
+  players,
   skillsByPlayer,
   onClose,
 }: {
-  position: Position;
-  candidates: RosterCandidate[];
-  playersById: Map<string, Player>;
+  title: string;
+  players: Player[];
   skillsByPlayer: Map<string, Partial<Record<Skill, number>>>;
   onClose: () => void;
 }) {
@@ -23,7 +24,7 @@ export function CandidateComparisonModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">Comparing {POSITION_LABELS[position]} Candidates</h2>
+          <h2 className="text-xl font-bold">{title}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -34,15 +35,13 @@ export function CandidateComparisonModal({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {candidates.map((candidate) => {
-            const player = playersById.get(candidate.playerId);
-            if (!player) return null;
+          {players.map((player) => {
             const bySkill = skillsByPlayer.get(player.id) ?? {};
             const profile = skillAveragesToRadarProfile(bySkill);
             const avg = overallAvgFromSkills(bySkill);
 
             return (
-              <div key={candidate.id} className="rounded-lg border border-gray-200 p-3">
+              <div key={player.id} className="rounded-lg border border-gray-200 p-3">
                 <div className="mb-1">
                   <p className="font-semibold text-gray-900">
                     {player.firstName} {player.lastName}

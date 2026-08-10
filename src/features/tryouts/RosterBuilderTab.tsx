@@ -58,8 +58,14 @@ async function ensurePositionTargets(team: Team) {
   await supabase.from('positionTargets').upsert(rows, { onConflict: 'id', ignoreDuplicates: true });
 }
 
+interface ComparisonRequest {
+  title: string;
+  playerIds: string[];
+}
+
 export function RosterBuilderTab({ team }: { team: Team }) {
-  const [comparingPosition, setComparingPosition] = useState<Position | null>(null);
+  const [comparison, setComparison] = useState<ComparisonRequest | null>(null);
+  const [showComparePicker, setShowComparePicker] = useState(false);
 
   // Plain effect, not useLiveQuery — liveQuery runs its callback in a
   // read-only transaction, so writes inside it throw ReadOnlyError.
@@ -138,10 +144,9 @@ export function RosterBuilderTab({ team }: { team: Team }) {
     await quickAdd(playerId, position);
   }
 
-  const comparingCandidates =
-    comparingPosition != null
-      ? (candidatesByPosition.get(comparingPosition) ?? []).filter((c) => c.status === 'considering')
-      : [];
+  // Every distinct player currently a candidate (any position, any status)
+  // for this team — feeds both "Compare All" and the specific-players picker.
+  const allTeamPlayerIds = [...new Set((candidates ?? []).map((c) => c.playerId))];
 
   const totalConfirmed = (candidates ?? []).filter((c) => c.status === 'confirmed').length;
   const rosterColor =
@@ -153,7 +158,30 @@ export function RosterBuilderTab({ team }: { team: Team }) {
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-2 mb-4">
+      <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
+          <button
+            type="button"
+            disabled={allTeamPlayerIds.length < 2}
+            onClick={() =>
+              setComparison({
+                title: `Comparing All ${TEAM_LABELS[team]} Candidates`,
+                playerIds: allTeamPlayerIds,
+              })
+            }
+            className="min-h-9 px-3 rounded-lg border border-gray-300 text-gray-700 text-xs font-medium disabled:opacity-40"
+          >
+            Compare All Candidates
+          </button>
+          <button
+            type="button"
+            disabled={allTeamPlayerIds.length < 2}
+            onClick={() => setShowComparePicker(true)}
+            className="min-h-9 px-3 rounded-lg border border-gray-300 text-gray-700 text-xs font-medium disabled:opacity-40"
+          >
+            Compare Specific Players…
+          </button>
+        </div>
         <span className={`text-sm font-semibold px-3 py-1.5 rounded-full ${rosterColor}`}>
           {totalConfirmed} / {TEAM_ROSTER_SIZE} confirmed
         </span>
@@ -179,18 +207,36 @@ export function RosterBuilderTab({ team }: { team: Team }) {
             candidates={candidatesByPosition.get(position) ?? []}
             playersById={playersById}
             skillsByPlayer={skillsByPlayer}
-            onCompare={() => setComparingPosition(position)}
+            onCompare={() =>
+              setComparison({
+                title: `Comparing ${POSITION_LABELS[position]} Candidates`,
+                playerIds: (candidatesByPosition.get(position) ?? [])
+                  .filter((c) => c.status === 'considering')
+                  .map((c) => c.playerId),
+              })
+            }
           />
         ))}
       </div>
 
-      {comparingPosition && (
+      {comparison && (
         <CandidateComparisonModal
-          position={comparingPosition}
-          candidates={comparingCandidates}
-          playersById={playersById}
+          title={comparison.title}
+          players={comparison.playerIds.map((id) => playersById.get(id)).filter((p): p is Player => !!p)}
           skillsByPlayer={skillsByPlayer}
-          onClose={() => setComparingPosition(null)}
+          onClose={() => setComparison(null)}
+        />
+      )}
+
+      {showComparePicker && (
+        <ComparePlayersPickerModal
+          candidates={candidates ?? []}
+          playersById={playersById}
+          onClose={() => setShowComparePicker(false)}
+          onConfirm={(playerIds) => {
+            setShowComparePicker(false);
+            setComparison({ title: `Comparing ${playerIds.length} Selected Players`, playerIds });
+          }}
         />
       )}
     </div>
@@ -566,6 +612,106 @@ function PositionCard({
           onClose={() => setShowAdd(false)}
         />
       )}
+    </div>
+  );
+}
+
+// Ad-hoc comparison: pick any subset of this team's candidates, regardless
+// of position, to compare side by side — the counterpart to the per-position
+// "Compare N candidates" button and the team-wide "Compare All" button.
+function ComparePlayersPickerModal({
+  candidates,
+  playersById,
+  onClose,
+  onConfirm,
+}: {
+  candidates: RosterCandidate[];
+  playersById: Map<string, Player>;
+  onClose: () => void;
+  onConfirm: (playerIds: string[]) => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+
+  const distinctPlayers = [...new Set(candidates.map((c) => c.playerId))]
+    .map((id) => playersById.get(id))
+    .filter((p): p is Player => !!p)
+    .sort((a, b) => a.firstName.localeCompare(b.firstName));
+
+  const visiblePlayers = distinctPlayers.filter((p) => matchesPlayerQuery(p, search));
+
+  function toggle(playerId: string) {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(playerId)) next.delete(playerId);
+      else next.add(playerId);
+      return next;
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
+      <div className="w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-xl">
+        <h2 className="text-xl font-bold mb-1">Compare Specific Players</h2>
+        <p className="text-sm text-gray-500 mb-3">{selected.size} selected (pick at least 2)</p>
+
+        <div className="mb-3">
+          <PlayerSearchInput value={search} onChange={setSearch} />
+        </div>
+
+        <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 overflow-hidden max-h-80 overflow-y-auto mb-4">
+          {visiblePlayers.map((p) => {
+            const checked = selected.has(p.id);
+            return (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => toggle(p.id)}
+                  className={`w-full min-h-11 flex items-center gap-3 px-4 py-2 text-left ${checked ? 'bg-blue-50' : ''}`}
+                >
+                  <span
+                    className={`h-5 w-5 rounded border flex items-center justify-center shrink-0 text-xs ${
+                      checked ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300'
+                    }`}
+                  >
+                    {checked ? '✓' : ''}
+                  </span>
+                  <span className="flex items-center gap-2 flex-wrap min-w-0">
+                    <span className="font-medium text-gray-900">
+                      {p.firstName} {p.lastName}
+                    </span>
+                    <span className="text-xs text-gray-500">{playerGradeLabel(p)}</span>
+                    <PositionBadges positions={p.positions} />
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+          {visiblePlayers.length === 0 && (
+            <li className="px-4 py-3 text-sm text-gray-400">
+              {search ? `No one matches "${search}".` : 'No candidates on this team yet.'}
+            </li>
+          )}
+        </ul>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-11 flex-1 rounded-lg border border-gray-300 text-base font-medium text-gray-700 active:bg-gray-100"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm([...selected])}
+            disabled={selected.size < 2}
+            className="min-h-11 flex-1 rounded-lg bg-blue-600 text-base font-medium text-white active:bg-blue-700 disabled:opacity-50"
+          >
+            Compare {selected.size || ''}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

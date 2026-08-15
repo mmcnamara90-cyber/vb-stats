@@ -41,7 +41,7 @@ export function LiveStatsTab({ game }: { game: Game }) {
   const setNumbers = [...new Set([1, setNumber, ...lineups.map((l) => l.setNumber)])].sort((a, b) => a - b);
 
   const effective = computeEffectiveCourt(
-    lineup ?? { zoneAssignments: {}, subs: [] },
+    lineup ?? { zoneAssignments: {}, subs: [], liberos: [] },
     rotation,
   );
   const onCourt = effective.zoneAssignments;
@@ -116,7 +116,7 @@ export function LiveStatsTab({ game }: { game: Game }) {
           : '↩ Undo last (nothing recorded yet)'}
       </button>
 
-      {(effective.activeSubs.length > 0 || effective.liberoZone) && (
+      {(effective.activeSubs.length > 0 || effective.liberosOnCourt.length > 0) && (
         <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 mb-3 text-xs text-violet-900 space-y-0.5">
           {effective.activeSubs.map((s) => (
             <p key={s.id}>
@@ -124,11 +124,16 @@ export function LiveStatsTab({ game }: { game: Game }) {
               {playersById.get(s.outPlayerId)?.firstName ?? 'Unknown'} (since Rotation {s.effectiveRotation})
             </p>
           ))}
-          {effective.liberoZone && (
-            <p>
-              🛡 Libero {playersById.get(onCourt[effective.liberoZone] ?? '')?.firstName ?? ''} in at Zone{' '}
-              {effective.liberoZone}
-              {effective.liberoServing ? ' — serving this rotation 🎯' : ''}
+          {effective.liberosOnCourt.map((l) => (
+            <p key={l.liberoAssignmentId}>
+              🛡 Libero {playersById.get(l.liberoPlayerId)?.firstName ?? ''} in at Zone {l.zone} (for{' '}
+              {playersById.get(l.shadowedPlayerId)?.firstName ?? 'Unknown'})
+              {l.serving ? ' — serving this rotation 🎯' : ''}
+            </p>
+          ))}
+          {effective.liberoConflict && (
+            <p className="font-semibold text-amber-700">
+              ⚠️ Two liberos on court at once — NFHS only allows one at a time.
             </p>
           )}
         </div>
@@ -144,14 +149,15 @@ export function LiveStatsTab({ game }: { game: Game }) {
             const playerId = onCourt[zone];
             const player = playerId ? playersById.get(playerId) : undefined;
             if (!player) return null;
+            const activeLibero = effective.liberosOnCourt.find((l) => l.zone === zone);
             return (
               <PlayerStatCard
                 key={zone}
                 player={player}
                 zone={zone}
                 events={events}
-                isLibero={effective.liberoZone === zone}
-                isServing={effective.liberoServing && effective.liberoZone === zone}
+                isLibero={!!activeLibero}
+                isServing={!!activeLibero?.serving}
                 onRecord={(t, v) => recordStat(player.id, t, v)}
               />
             );

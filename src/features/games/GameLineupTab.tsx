@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
-import type { CourtZone, Game, GameLineup, Player, PlannedSub } from '../../types';
+import type { CourtZone, Game, GameLineup, LiberoAssignment, Player, PlannedSub } from '../../types';
 import { playerGradeLabel } from '../../lib/playerSearch';
 import { PositionBadges } from '../tryouts/PositionBadges';
 import { computeEffectiveCourt, liberoRotationPlan } from './effectiveCourt';
@@ -17,13 +17,34 @@ const selectClass =
 
 function emptyLineup(gameId: string, setNumber: number): GameLineup {
   const now = new Date().toISOString();
-  return { id: crypto.randomUUID(), gameId, setNumber, zoneAssignments: {}, subs: [], createdAt: now, updatedAt: now };
+  return {
+    id: crypto.randomUUID(),
+    gameId,
+    setNumber,
+    zoneAssignments: {},
+    subs: [],
+    liberos: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+// A placeholder used only until we know whether a real row exists for this
+// set — deliberately stamped with an empty (not "now") updatedAt, which
+// sorts before every real ISO timestamp. Stamping it "now" instead was a
+// real bug caught in testing: a freshly-mounted phantom's timestamp is
+// *newer* than whatever real, previously-saved row eventually loads, so
+// the "adopt the server row once it's at least as fresh" check below would
+// never fire and a saved lineup would appear empty until you edited it.
+function phantomLineup(gameId: string, setNumber: number): GameLineup {
+  return { ...emptyLineup(gameId, setNumber), updatedAt: '' };
 }
 
 export function GameLineupTab({ game }: { game: Game }) {
   const [setNumber, setSetNumber] = useState(1);
   const [rotation, setRotation] = useState<(typeof ROTATIONS)[number]>(1);
   const [selectedBenchPlayerId, setSelectedBenchPlayerId] = useState<string | null>(null);
+  const [subTargetZone, setSubTargetZone] = useState<CourtZone | null>(null);
 
   const players = useLiveQuery(async () => {
     const { data } = await supabase.from('players').select('*').eq('active', true);
@@ -41,16 +62,41 @@ export function GameLineupTab({ game }: { game: Game }) {
     .sort((a, b) => a.firstName.localeCompare(b.firstName));
 
   const setNumbers = [...new Set([1, setNumber, ...(lineups ?? []).map((l) => l.setNumber)])].sort((a, b) => a - b);
-  const lineup = (lineups ?? []).find((l) => l.setNumber === setNumber) ?? emptyLineup(game.id, setNumber);
+  const serverLineup = (lineups ?? []).find((l) => l.setNumber === setNumber);
+
+  // Local optimistic copy of the lineup being edited. Every edit here
+  // (toggling both libero "shadow" buttons back to back, adding a sub then
+  // immediately adding another, etc.) is a burst of persist() calls that
+  // happen faster than a Supabase upsert + realtime refetch round-trip —
+  // if each call read its base from the query result directly, the second
+  // call would still see the pre-first-edit snapshot and silently clobber
+  // it on upsert. Keeping a local copy that advances synchronously on every
+  // persist() sidesteps that; it re-syncs to the server row once that row
+  // is at least as fresh as our own last write (or immediately on set
+  // switch), so it never diverges for long or fights genuine server state.
+  const [workingLineup, setWorkingLineup] = useState<GameLineup>(
+    () => serverLineup ?? phantomLineup(game.id, setNumber),
+  );
+
+  useEffect(() => {
+    setWorkingLineup((cur) => {
+      if (cur.setNumber !== setNumber) return serverLineup ?? phantomLineup(game.id, setNumber);
+      if (serverLineup && serverLineup.updatedAt >= cur.updatedAt) return serverLineup;
+      return cur;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverLineup, setNumber]);
 
   if (lineups === undefined || players === undefined) {
     return <p className="text-gray-500">Loading…</p>;
   }
 
-  async function persist(patch: Partial<Pick<GameLineup, 'zoneAssignments' | 'subs' | 'liberoPlayerId' | 'liberoForPlayerId'>>) {
-    const existing = (lineups ?? []).find((l) => l.setNumber === setNumber);
-    const base = existing ?? emptyLineup(game.id, setNumber);
-    await supabase.from('gameLineups').upsert({ ...base, ...patch, updatedAt: new Date().toISOString() });
+  const lineup = workingLineup;
+
+  async function persist(patch: Partial<Pick<GameLineup, 'zoneAssignments' | 'subs' | 'liberos'>>) {
+    const updated = { ...workingLineup, ...patch, updatedAt: new Date().toISOString() };
+    setWorkingLineup(updated);
+    await supabase.from('gameLineups').upsert(updated);
   }
 
   function addSet() {
@@ -74,17 +120,37 @@ export function GameLineupTab({ game }: { game: Game }) {
   }
 
   function handleCellClick(zone: CourtZone) {
-    if (rotation !== 1) return;
-    const next = { ...zoneAssignments };
-    if (selectedBenchPlayerId) {
-      next[zone] = selectedBenchPlayerId;
-      setSelectedBenchPlayerId(null);
-      persist({ zoneAssignments: next });
-    } else if (next[zone]) {
-      delete next[zone];
-      persist({ zoneAssignments: next });
+    if (rotation === 1) {
+      const next = { ...zoneAssignments };
+      if (selectedBenchPlayerId) {
+        next[zone] = selectedBenchPlayerId;
+        setSelectedBenchPlayerId(null);
+        persist({ zoneAssignments: next });
+      } else if (next[zone]) {
+        delete next[zone];
+        persist({ zoneAssignments: next });
+      }
+      return;
     }
+    // Rotations 2-6: tapping a cell opens/closes the "sub someone in here,
+    // starting at this rotation" picker for that zone.
+    setSubTargetZone((cur) => (cur === zone ? null : zone));
   }
+
+  function scheduleSub(zone: CourtZone, inPlayerId: string) {
+    const outPlayerId = effective.zoneAssignments[zone];
+    if (!outPlayerId) return;
+    const sub: PlannedSub = { id: crypto.randomUUID(), outPlayerId, inPlayerId, effectiveRotation: rotation };
+    persist({ subs: [...lineup.subs, sub] });
+    setSubTargetZone(null);
+  }
+
+  function removeSub(id: string) {
+    persist({ subs: lineup.subs.filter((s) => s.id !== id) });
+  }
+
+  const onCourtIds = new Set(Object.values(effective.zoneAssignments));
+  const subCandidates = rosterPlayers.filter((p) => !onCourtIds.has(p.id));
 
   return (
     <div>
@@ -99,7 +165,7 @@ export function GameLineupTab({ game }: { game: Game }) {
           <button
             key={n}
             type="button"
-            onClick={() => { setSetNumber(n); setRotation(1); }}
+            onClick={() => { setSetNumber(n); setRotation(1); setSubTargetZone(null); }}
             className={`min-h-9 px-3 rounded-lg text-sm font-medium border ${
               setNumber === n ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300'
             }`}
@@ -117,7 +183,7 @@ export function GameLineupTab({ game }: { game: Game }) {
           <button
             key={r}
             type="button"
-            onClick={() => setRotation(r)}
+            onClick={() => { setRotation(r); setSubTargetZone(null); }}
             className={`min-h-9 px-3 rounded-lg text-sm font-medium border ${
               rotation === r ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
             }`}
@@ -128,7 +194,9 @@ export function GameLineupTab({ game }: { game: Game }) {
       </div>
       {rotation !== 1 ? (
         <p className="text-xs text-gray-500 mb-2">
-          Derived from Rotation 1, plus any subs/libero swap in effect by this rotation — read-only.
+          {subTargetZone
+            ? 'Pick who subs in below.'
+            : 'Shows the derived court for this rotation, plus any subs/libero already in effect. Tap a player to schedule a sub starting here.'}
         </p>
       ) : (
         <p className="text-xs text-gray-500 mb-2">
@@ -138,19 +206,27 @@ export function GameLineupTab({ game }: { game: Game }) {
         </p>
       )}
 
+      {rotation !== 1 && effective.liberoConflict && (
+        <p className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+          ⚠️ Two different liberos would both be on court this rotation — NFHS only allows one at a time. Check the
+          Libero section below.
+        </p>
+      )}
+
       <div className="mb-1 text-center text-xs font-medium tracking-widest text-gray-400">— NET —</div>
-      <div className="rounded-xl border border-gray-200 p-2 mb-4 bg-gray-50">
+      <div className="rounded-xl border border-gray-200 p-2 mb-2 bg-gray-50">
         {ZONE_GRID.map((row, i) => (
           <div key={i} className="grid grid-cols-3 gap-2 mb-2 last:mb-0">
             {row.map((zone) => {
               const playerId = displayedAssignments[zone];
               const player = playerId ? playersById.get(playerId) : undefined;
-              const isLibero = rotation !== 1 && effective.liberoZone === zone;
+              const activeLibero = rotation !== 1 ? effective.liberosOnCourt.find((l) => l.zone === zone) : undefined;
+              const isTargeted = rotation !== 1 && subTargetZone === zone;
               return (
                 <div
                   key={zone}
                   role="button"
-                  tabIndex={rotation === 1 ? 0 : -1}
+                  tabIndex={0}
                   aria-label={`Zone ${zone}${player ? `: ${player.firstName} ${player.lastName}` : ', empty'}`}
                   onClick={() => handleCellClick(zone)}
                   onKeyDown={(e) => {
@@ -159,13 +235,15 @@ export function GameLineupTab({ game }: { game: Game }) {
                       handleCellClick(zone);
                     }
                   }}
-                  className={`relative min-h-24 rounded-lg border-2 p-2 flex flex-col items-center justify-center text-center ${
+                  className={`relative min-h-24 rounded-lg border-2 p-2 flex flex-col items-center justify-center text-center cursor-pointer ${
                     rotation !== 1
-                      ? isLibero
-                        ? 'bg-violet-100 border-violet-400'
-                        : player
-                          ? 'bg-blue-50 border-blue-200'
-                          : 'bg-white border-gray-200'
+                      ? isTargeted
+                        ? 'bg-blue-50 border-blue-400 border-dashed'
+                        : activeLibero
+                          ? 'bg-violet-100 border-violet-400'
+                          : player
+                            ? 'bg-blue-50 border-blue-200'
+                            : 'bg-white border-gray-200'
                       : player
                         ? 'bg-blue-100 border-blue-500'
                         : selectedBenchPlayerId
@@ -174,7 +252,9 @@ export function GameLineupTab({ game }: { game: Game }) {
                   }`}
                 >
                   <span className="absolute top-1 left-1 text-[10px] text-gray-500 font-medium">{zone}</span>
-                  {isLibero && <span className="absolute top-1 right-1 text-[10px]">🛡{zone === 1 ? '🎯' : ''}</span>}
+                  {activeLibero && (
+                    <span className="absolute top-1 right-1 text-[10px]">🛡{activeLibero.serving ? '🎯' : ''}</span>
+                  )}
                   {player ? (
                     <>
                       <span className="text-xs font-semibold text-gray-900 mt-3 leading-tight">
@@ -191,6 +271,44 @@ export function GameLineupTab({ game }: { game: Game }) {
           </div>
         ))}
       </div>
+
+      {rotation !== 1 && subTargetZone && (
+        <div className="rounded-lg border border-blue-300 bg-blue-50 overflow-hidden mb-4">
+          <div className="px-3 py-2 text-xs text-blue-900">
+            Sub in for <span className="font-semibold">
+              {playersById.get(effective.zoneAssignments[subTargetZone] ?? '')?.firstName ?? 'this spot'}
+            </span>{' '}
+            (Zone {subTargetZone}), starting Rotation {rotation}:
+          </div>
+          <ul className="divide-y divide-blue-100 bg-white">
+            {subCandidates.length === 0 && (
+              <li className="px-3 py-2 text-sm text-gray-400">Everyone else is already on the court.</li>
+            )}
+            {subCandidates.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => scheduleSub(subTargetZone, p.id)}
+                  className="w-full min-h-11 flex items-center gap-2 px-3 py-2 text-left active:bg-blue-50"
+                >
+                  <span className="font-medium text-gray-900">
+                    {p.firstName} {p.lastName}
+                  </span>
+                  <span className="text-xs text-gray-500">{playerGradeLabel(p)}</span>
+                  <PositionBadges positions={p.positions} />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={() => setSubTargetZone(null)}
+            className="w-full min-h-9 px-3 py-2 text-xs font-medium text-gray-500 border-t border-blue-100"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {rotation === 1 && (
         <div className="rounded-lg border border-gray-200 overflow-hidden mb-4">
@@ -218,42 +336,23 @@ export function GameLineupTab({ game }: { game: Game }) {
         </div>
       )}
 
-      <SubsSection lineup={lineup} rosterPlayers={rosterPlayers} onPersist={persist} />
+      <SubsList lineup={lineup} rosterPlayers={rosterPlayers} onRemove={removeSub} />
       <LiberoSection lineup={lineup} rosterPlayers={rosterPlayers} starters={starters} onPersist={persist} />
     </div>
   );
 }
 
-function SubsSection({
+function SubsList({
   lineup,
   rosterPlayers,
-  onPersist,
+  onRemove,
 }: {
   lineup: GameLineup;
   rosterPlayers: Player[];
-  onPersist: (patch: Partial<Pick<GameLineup, 'subs'>>) => void;
+  onRemove: (id: string) => void;
 }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [outPlayerId, setOutPlayerId] = useState('');
-  const [inPlayerId, setInPlayerId] = useState('');
-  const [effectiveRotation, setEffectiveRotation] = useState<number>(2);
   const playersById = new Map(rosterPlayers.map((p) => [p.id, p]));
   const sortedSubs = [...lineup.subs].sort((a, b) => a.effectiveRotation - b.effectiveRotation);
-
-  function addSub() {
-    if (!outPlayerId || !inPlayerId) return;
-    const sub: PlannedSub = { id: crypto.randomUUID(), outPlayerId, inPlayerId, effectiveRotation };
-    onPersist({ subs: [...lineup.subs, sub] });
-    setOutPlayerId('');
-    setInPlayerId('');
-    setEffectiveRotation(2);
-    setShowAdd(false);
-  }
-
-  function removeSub(id: string) {
-    onPersist({ subs: lineup.subs.filter((s) => s.id !== id) });
-  }
-
   const name = (id: string) => {
     const p = playersById.get(id);
     return p ? `${p.firstName} ${p.lastName}` : 'Unknown';
@@ -263,93 +362,31 @@ function SubsSection({
     <div className="rounded-lg border border-gray-200 overflow-hidden mb-4">
       <div className="px-3 py-2 bg-gray-50 font-semibold text-gray-900">Planned Substitutions</div>
       <p className="px-3 pt-2 text-xs text-gray-500">
-        Declare a sub you already know is coming, keyed to the rotation it starts at (e.g. "Leila in for Olivia
-        starting Rotation 2"). It stays in effect for that rotation and every one after it — 2 through 6, then 1 —
-        until another planned sub reverses it. Rotations 2-6 above and the Live tab both reflect this automatically.
+        On Rotations 2-6 above, tap the player leaving the court, then pick who's coming in — it takes effect that
+        rotation and stays until another sub reverses it.
       </p>
-
-      {sortedSubs.length === 0 && !showAdd && <p className="px-3 py-2 text-sm text-gray-400">No subs planned yet.</p>}
-
-      <ul className="divide-y divide-gray-100">
-        {sortedSubs.map((s) => (
-          <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 flex-wrap">
-            <span className="text-sm text-gray-900">
-              <span className="font-medium">{name(s.inPlayerId)}</span>
-              <span className="text-gray-400"> in for </span>
-              <span className="font-medium">{name(s.outPlayerId)}</span>
-              <span className="text-xs text-gray-500 ml-1">from Rotation {s.effectiveRotation}</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => removeSub(s.id)}
-              className="min-h-8 px-2.5 rounded-md bg-gray-200 text-xs font-semibold text-gray-700 active:bg-gray-300 shrink-0"
-            >
-              Remove
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      {showAdd ? (
-        <div className="px-3 py-3 border-t border-gray-100 space-y-2">
-          <select className={selectClass} value={outPlayerId} onChange={(e) => setOutPlayerId(e.target.value)}>
-            <option value="">Player coming out…</option>
-            {rosterPlayers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.firstName} {p.lastName}
-              </option>
-            ))}
-          </select>
-          <select className={selectClass} value={inPlayerId} onChange={(e) => setInPlayerId(e.target.value)}>
-            <option value="">Player coming in…</option>
-            {rosterPlayers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.firstName} {p.lastName}
-              </option>
-            ))}
-          </select>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 shrink-0">Starting at Rotation:</span>
-            <select
-              className={selectClass}
-              value={effectiveRotation}
-              onChange={(e) => setEffectiveRotation(Number(e.target.value))}
-            >
-              {ROTATIONS.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAdd(false)}
-              className="min-h-11 flex-1 rounded-lg border border-gray-300 text-base font-medium text-gray-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={addSub}
-              disabled={!outPlayerId || !inPlayerId}
-              className="min-h-11 flex-1 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700 disabled:opacity-50"
-            >
-              Add
-            </button>
-          </div>
-        </div>
+      {sortedSubs.length === 0 ? (
+        <p className="px-3 py-2 text-sm text-gray-400">No subs planned yet.</p>
       ) : (
-        <div className="px-3 py-2 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={() => setShowAdd(true)}
-            className="min-h-9 px-3 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-xs font-medium"
-          >
-            + Add planned sub
-          </button>
-        </div>
+        <ul className="divide-y divide-gray-100 mt-1">
+          {sortedSubs.map((s) => (
+            <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 flex-wrap">
+              <span className="text-sm text-gray-900">
+                <span className="font-medium">{name(s.inPlayerId)}</span>
+                <span className="text-gray-400"> in for </span>
+                <span className="font-medium">{name(s.outPlayerId)}</span>
+                <span className="text-xs text-gray-500 ml-1">from Rotation {s.effectiveRotation}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemove(s.id)}
+                className="min-h-8 px-2.5 rounded-md bg-gray-200 text-xs font-semibold text-gray-700 active:bg-gray-300 shrink-0"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -364,73 +401,173 @@ function LiberoSection({
   lineup: GameLineup;
   rosterPlayers: Player[];
   starters: Player[];
-  onPersist: (patch: Partial<Pick<GameLineup, 'liberoPlayerId' | 'liberoForPlayerId'>>) => void;
+  onPersist: (patch: Partial<Pick<GameLineup, 'liberos'>>) => void;
 }) {
-  const playersById = new Map(rosterPlayers.map((p) => [p.id, p]));
-  const plan =
-    lineup.liberoForPlayerId && Object.keys(lineup.zoneAssignments).length === 6
-      ? liberoRotationPlan(lineup.zoneAssignments, lineup.liberoForPlayerId)
-      : [];
-  const backRowStops = plan.filter((s) => s.backRow);
-  const servingStop = backRowStops.find((s) => s.zone === 1);
+  function updateAssignment(id: string, patch: Partial<LiberoAssignment>) {
+    onPersist({ liberos: lineup.liberos.map((a) => (a.id === id ? { ...a, ...patch } : a)) });
+  }
+
+  function addAssignment() {
+    if (lineup.liberos.length >= 2) return;
+    const assignment: LiberoAssignment = { id: crypto.randomUUID(), liberoPlayerId: '', shadowedPlayerIds: [] };
+    onPersist({ liberos: [...lineup.liberos, assignment] });
+  }
+
+  function removeAssignment(id: string) {
+    onPersist({ liberos: lineup.liberos.filter((a) => a.id !== id) });
+  }
 
   return (
     <div className="rounded-lg border border-gray-200 overflow-hidden mb-4">
-      <div className="px-3 py-2 bg-gray-50 font-semibold text-gray-900">🛡 Libero</div>
-      <div className="px-3 py-3 space-y-2">
-        <label className="block text-xs font-medium text-gray-500">Libero</label>
-        <select
-          className={selectClass}
-          value={lineup.liberoPlayerId ?? ''}
-          onChange={(e) => onPersist({ liberoPlayerId: e.target.value || undefined })}
+      <div className="px-3 py-2 bg-gray-50 font-semibold text-gray-900">🛡 Libero{lineup.liberos.length !== 1 ? 's' : ''}</div>
+      <p className="px-3 pt-2 text-xs text-gray-500">
+        NFHS allows up to 2 designated liberos per set. Each can shadow one or two starters (commonly both middles) —
+        she takes over whichever of them is currently back row.
+      </p>
+
+      {lineup.liberos.map((assignment, i) => (
+        <LiberoAssignmentCard
+          key={assignment.id}
+          index={i}
+          assignment={assignment}
+          lineup={lineup}
+          rosterPlayers={rosterPlayers}
+          starters={starters}
+          onChange={(patch) => updateAssignment(assignment.id, patch)}
+          onRemove={() => removeAssignment(assignment.id)}
+        />
+      ))}
+
+      <div className="px-3 py-2 border-t border-gray-100">
+        <button
+          type="button"
+          onClick={addAssignment}
+          disabled={lineup.liberos.length >= 2}
+          className="min-h-9 px-3 rounded-lg border border-violet-300 bg-violet-50 text-violet-700 text-xs font-medium disabled:opacity-40"
         >
-          <option value="">Not designated for this set</option>
-          {rosterPlayers.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.firstName} {p.lastName}
-            </option>
-          ))}
-        </select>
-
-        {lineup.liberoPlayerId && (
-          <>
-            <label className="block text-xs font-medium text-gray-500">Replaces (shadows this starter's back-row zones)</label>
-            <select
-              className={selectClass}
-              value={lineup.liberoForPlayerId ?? ''}
-              onChange={(e) => onPersist({ liberoForPlayerId: e.target.value || undefined })}
-            >
-              <option value="">Select a starter…</option>
-              {starters.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.firstName} {p.lastName}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-
-        {lineup.liberoPlayerId && lineup.liberoForPlayerId && (
-          <div className="rounded-lg bg-violet-50 border border-violet-200 px-3 py-2 text-xs text-violet-900">
-            {backRowStops.length === 0 ? (
-              <p>Fill in all 6 starting spots above to compute the libero's rotation plan.</p>
-            ) : (
-              <>
-                <p className="font-medium mb-1">
-                  {playersById.get(lineup.liberoPlayerId)?.firstName} is in for{' '}
-                  {playersById.get(lineup.liberoForPlayerId)?.firstName} at Rotation
-                  {backRowStops.length > 1 ? 's' : ''} {backRowStops.map((s) => s.rotation).join(', ')} (back row).
-                </p>
-                <p>
-                  {servingStop
-                    ? `Serves at Rotation ${servingStop.rotation} (Zone 1).`
-                    : `Doesn't reach Zone 1 with this lineup — won't serve.`}
-                </p>
-              </>
-            )}
-          </div>
-        )}
+          + Add libero{lineup.liberos.length >= 2 ? ' (max 2)' : ''}
+        </button>
       </div>
+    </div>
+  );
+}
+
+function LiberoAssignmentCard({
+  index,
+  assignment,
+  lineup,
+  rosterPlayers,
+  starters,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  assignment: LiberoAssignment;
+  lineup: GameLineup;
+  rosterPlayers: Player[];
+  starters: Player[];
+  onChange: (patch: Partial<LiberoAssignment>) => void;
+  onRemove: () => void;
+}) {
+  const playersById = new Map(rosterPlayers.map((p) => [p.id, p]));
+  const plan =
+    assignment.shadowedPlayerIds.length > 0 && Object.keys(lineup.zoneAssignments).length === 6
+      ? liberoRotationPlan(lineup.zoneAssignments, assignment)
+      : [];
+  const servingStop = plan.find((s) => s.serving);
+
+  function toggleShadow(playerId: string) {
+    const has = assignment.shadowedPlayerIds.includes(playerId);
+    const next = has
+      ? assignment.shadowedPlayerIds.filter((id) => id !== playerId)
+      : [...assignment.shadowedPlayerIds, playerId];
+    const patch: Partial<LiberoAssignment> = { shadowedPlayerIds: next };
+    if (assignment.servesForPlayerId && !next.includes(assignment.servesForPlayerId)) {
+      patch.servesForPlayerId = undefined;
+    }
+    onChange(patch);
+  }
+
+  return (
+    <div className="px-3 py-3 border-t border-gray-100 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-500">Libero {index + 1}</span>
+        <button type="button" onClick={onRemove} className="text-xs text-gray-400 underline">
+          Remove
+        </button>
+      </div>
+
+      <label className="block text-xs font-medium text-gray-500">Player</label>
+      <select
+        className={selectClass}
+        value={assignment.liberoPlayerId}
+        onChange={(e) => onChange({ liberoPlayerId: e.target.value })}
+      >
+        <option value="">Select…</option>
+        {rosterPlayers.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.firstName} {p.lastName}
+          </option>
+        ))}
+      </select>
+
+      <label className="block text-xs font-medium text-gray-500">Shadows (tap to toggle, usually both middles)</label>
+      <div className="flex flex-wrap gap-1.5">
+        {starters.map((p) => {
+          const active = assignment.shadowedPlayerIds.includes(p.id);
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => toggleShadow(p.id)}
+              className={`min-h-9 px-2.5 rounded-lg text-xs font-medium border ${
+                active ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-700 border-gray-300'
+              }`}
+            >
+              {p.firstName}
+            </button>
+          );
+        })}
+      </div>
+
+      {assignment.shadowedPlayerIds.length > 1 && (
+        <>
+          <label className="block text-xs font-medium text-gray-500">Serves for (which one she actually serves)</label>
+          <select
+            className={selectClass}
+            value={assignment.servesForPlayerId ?? ''}
+            onChange={(e) => onChange({ servesForPlayerId: e.target.value || undefined })}
+          >
+            <option value="">Default: {playersById.get(assignment.shadowedPlayerIds[0])?.firstName ?? 'first'}</option>
+            {assignment.shadowedPlayerIds.map((id) => (
+              <option key={id} value={id}>
+                {playersById.get(id)?.firstName ?? 'Unknown'}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+
+      {assignment.liberoPlayerId && assignment.shadowedPlayerIds.length > 0 && (
+        <div className="rounded-lg bg-violet-50 border border-violet-200 px-3 py-2 text-xs text-violet-900">
+          {plan.length === 0 ? (
+            <p>Fill in all 6 starting spots above to compute the rotation plan.</p>
+          ) : (
+            <>
+              <p className="font-medium mb-1">
+                {playersById.get(assignment.liberoPlayerId)?.firstName} is in at Rotation
+                {plan.length > 1 ? 's' : ''}{' '}
+                {plan.map((s) => `${s.rotation} (for ${playersById.get(s.shadowedPlayerId)?.firstName ?? '?'})`).join(', ')}.
+              </p>
+              <p>
+                {servingStop
+                  ? `Serves at Rotation ${servingStop.rotation}, for ${playersById.get(servingStop.shadowedPlayerId)?.firstName ?? '?'}.`
+                  : `Doesn't reach Zone 1 for the designated server with this lineup — won't serve.`}
+              </p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

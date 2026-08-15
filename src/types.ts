@@ -230,8 +230,7 @@ export interface GameLineup {
   setNumber: number;
   zoneAssignments: Partial<Record<CourtZone, string>>; // zone -> playerId, rotation 1 only; 2-6 derived
   subs: PlannedSub[];        // rotation-triggered player swaps planned ahead of time
-  liberoPlayerId?: string;   // the designated libero for this set
-  liberoForPlayerId?: string; // which Rotation-1 starter's back-row zones the libero shadows
+  liberos: LiberoAssignment[]; // 0-2 designated liberos for this set (NFHS 2026-27 Rule 6-4-2)
   createdAt: string;        // ISO datetime
   updatedAt: string;        // ISO datetime
 }
@@ -248,6 +247,22 @@ export interface PlannedSub {
   outPlayerId: string;
   inPlayerId: string;
   effectiveRotation: number; // 1-6
+}
+
+// A designated libero and who she shadows. shadowedPlayerIds is usually
+// both middles (a common real scheme — libero replaces whichever middle
+// is currently back row) but can be just one. servesForPlayerId picks
+// which ONE shadowed player's Zone-1 (server) turn is actually hers to
+// serve — required to disambiguate once there's more than one shadowed
+// player, since NFHS only allows a libero to serve in one position in
+// the serving order. Up to 2 of these per set (0, 1, or 2 designated
+// liberos) — only one is ever supposed to be on court at a time; the
+// app flags (doesn't block) a rotation where both would be.
+export interface LiberoAssignment {
+  id: string;
+  liberoPlayerId: string;
+  shadowedPlayerIds: string[]; // 1-2 Rotation-1 starters
+  servesForPlayerId?: string;  // must be one of shadowedPlayerIds; defaults to the first if unset
 }
 
 // Kept intentionally small relative to the full StatType/StatEvent scaffold

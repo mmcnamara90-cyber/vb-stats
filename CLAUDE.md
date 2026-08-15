@@ -261,40 +261,66 @@ sub-tabs) once a game is selected.
   Bench pool is the game's roster, not `rosterCandidates`. "+ Set" adds
   additional sets (no best-of-3/5 enforcement — just an incrementing
   number the coach controls). Also hosts **Planned Substitutions** and
-  **Libero** config (see below) — both scoped to the same `gameLineups`
-  row (per set), since either can differ set to set.
+  **Libero(s)** config (see below) — both scoped to the same `gameLineups`
+  row (per set), since either can differ set to set. Uses a local
+  optimistic-state pattern (`workingLineup` in `GameLineupTab.tsx`, synced
+  from the query but advanced synchronously on every edit) rather than
+  reading `persist()`'s base straight from the live query result — **two
+  real bugs were caught in testing here, worth knowing if extending this
+  further**: (1) building each patch from the query result directly meant
+  a burst of rapid edits (e.g. tapping both libero "shadow" toggles back to
+  back) would race the Supabase upsert + realtime refetch round-trip and
+  silently drop the earlier edit; (2) the naive fix — a local placeholder
+  stamped with `new Date().toISOString()` before any row exists — backfired
+  because that "now" timestamp is *newer* than whatever real row
+  eventually loads, so the "adopt the server row once it's at least as
+  fresh" check never fired and a previously-saved lineup would render
+  empty until edited. Fixed by stamping the not-yet-loaded placeholder
+  (`phantomLineup()`) with `updatedAt: ''` instead, which sorts before any
+  real ISO timestamp.
 - **Planned substitutions**: `GameLineup.subs` (`PlannedSub[]` in
-  `types.ts`) — the coach declares a swap ahead of time keyed to the
-  rotation it starts at (e.g. "Leila in for Olivia starting Rotation 2").
-  Applied cumulatively in ascending `effectiveRotation` order (chainable —
-  a later sub can bring the original starter back in) for every rotation
-  from there on, **1→6 linearly, not wrapping** — the app doesn't track
-  how many times the team has cycled through the rotation order in a set,
-  so a sub declared "from Rotation 2" stays in effect through 3,4,5,6,1
-  without re-evaluating; this is a deliberate simplification, not a rules
-  model.
-- **Libero**: `GameLineup.liberoPlayerId` + `liberoForPlayerId` — the
-  libero shadows one specific Rotation-1 starter's slot and takes over
-  that zone whenever it's back row (1/5/6), computed off the *raw*
-  Rotation-1 map so she keeps tracking that teammate regardless of what a
-  planned sub did elsewhere. Only a single libero/single shadowed player
-  is supported (not the 2-libero or libero-for-two-positions schemes) —
-  matches what was asked for, see `docs/volleyball-domain-knowledge.md`
-  §1.3 for the fuller rule if that's ever needed. "Serves at Rotation N"
-  is *computed*, not entered — a single-target libero can only reach
-  Zone 1 (the server spot) once per 6-rotation cycle, so the NFHS "only
-  one position in the serving order" constraint falls out of the math
-  automatically rather than needing separate enforcement.
+  `types.ts`) — **scheduled by tapping the court, not a separate form**:
+  on the Rotation 2-6 preview, tap the player leaving, then pick who's
+  coming in from the list that appears (mirrors the same tap-driven feel
+  as Rotation 1's bench-then-cell placement, which coaches already know).
+  Effective from the tapped rotation onward. Applied cumulatively in
+  ascending `effectiveRotation` order (chainable — a later sub can bring
+  the original starter back in) for every rotation from there on, **1→6
+  linearly, not wrapping** — the app doesn't track how many times the team
+  has cycled through the rotation order in a set, so a sub declared "from
+  Rotation 2" stays in effect through 3,4,5,6,1 without re-evaluating;
+  this is a deliberate simplification, not a rules model. A read-only list
+  below the grid (`SubsList`) shows everything planned so far with a
+  per-row Remove — the only way to delete a sub.
+- **Libero(s)**: `GameLineup.liberos` (`LiberoAssignment[]` in
+  `types.ts`) — up to 2 per set (NFHS 2026-27 Rule 6-4-2), each shadowing
+  1-2 Rotation-1 starters (commonly both middles) via `shadowedPlayerIds`.
+  She takes over whichever shadowed starter's zone is currently back row,
+  computed off the *raw* Rotation-1 map so she keeps tracking those
+  teammates regardless of what a planned sub did elsewhere; if her two
+  shadowed starters are ever back row at the same time (not expected with
+  standard opposite-middle placement, but not assumed), whichever zone is
+  scanned first (fixed `[1,5,6]` order) wins. With 2+ shadowed players,
+  `servesForPlayerId` disambiguates which one's Zone-1 turn is actually
+  hers to serve (defaults to the first shadowed player if unset) — the
+  NFHS "only one position in the serving order" constraint stops being
+  automatic once a libero covers more than one player, so it's an
+  explicit field rather than always-computed. `computeEffectiveCourt()`
+  also flags (never blocks) `liberoConflict`: true when both designated
+  liberos would be on court in the same rotation, which the rule doesn't
+  allow but the app doesn't enforce — shown as an amber warning on both
+  the Lineup and Live tabs.
 - **Live tab**: shows the 6 players on court for the selected set +
   rotation (rotation is a manual toggle — the coach advances it, there's no
   automatic side-out detection), computed via `computeEffectiveCourt()`
   (`effectiveCourt.ts`) which layers mechanical rotation → planned subs →
-  libero swap, in that order, on every rotation including Rotation 1 (so a
-  libero who starts the set already on the court shows correctly). A
-  violet banner above the roster names any subs/libero active for the
-  current rotation. A player playing libero this rotation never gets
-  attack buttons (libero can't attack) regardless of her tagged position —
-  see `showAttack` in `LiveStatsTab.tsx`. Each player's stat buttons are
+  libero swap(s), in that order, on every rotation including Rotation 1 (so
+  a libero who starts the set already on the court shows correctly). A
+  violet banner above the roster names any subs/libero(s) active for the
+  current rotation, plus the conflict warning if both liberos would be on
+  court at once. A player playing libero this rotation never gets attack
+  buttons (libero can't attack) regardless of her tagged position — see
+  `showAttack` in `LiveStatsTab.tsx`. Each player's stat buttons are
   otherwise driven by `statRolesForPositions()` (`gameStats.ts`) off their
   tagged `Position`s, unioned if a player has more than one:
   - Hitter (OH/MB/OPP): Attempt / Kill / Error + serve receive 0-3 rating.

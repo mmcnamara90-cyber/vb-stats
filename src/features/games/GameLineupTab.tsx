@@ -158,23 +158,25 @@ export function GameLineupTab({ game }: { game: Game }) {
                       handleCellClick(zone);
                     }
                   }}
-                  className={`relative min-h-24 rounded-lg border-2 p-2 flex flex-col items-center justify-center text-center bg-white ${
+                  className={`relative min-h-24 rounded-lg border-2 p-2 flex flex-col items-center justify-center text-center ${
                     rotation !== 1
-                      ? 'border-gray-200'
+                      ? player
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-white border-gray-200'
                       : player
-                        ? 'border-blue-300'
+                        ? 'bg-blue-100 border-blue-500'
                         : selectedBenchPlayerId
-                          ? 'border-blue-400 border-dashed cursor-pointer'
-                          : 'border-gray-200'
+                          ? 'bg-blue-50 border-blue-400 border-dashed cursor-pointer'
+                          : 'bg-white border-gray-200'
                   }`}
                 >
-                  <span className="absolute top-1 left-1 text-[10px] text-gray-400">{zone}</span>
+                  <span className="absolute top-1 left-1 text-[10px] text-gray-500 font-medium">{zone}</span>
                   {player ? (
                     <>
-                      <span className="text-xs font-medium text-gray-900 mt-3 leading-tight">
+                      <span className="text-xs font-semibold text-gray-900 mt-3 leading-tight">
                         {player.firstName} {player.lastName}
                       </span>
-                      <span className="text-[10px] text-gray-500">{playerGradeLabel(player)}</span>
+                      <span className="text-[10px] text-gray-600">{playerGradeLabel(player)}</span>
                     </>
                   ) : (
                     <span className="text-xs text-gray-300">{rotation === 1 ? 'Tap to place' : '—'}</span>

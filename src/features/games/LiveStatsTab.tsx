@@ -62,6 +62,9 @@ export function LiveStatsTab({ game }: { game: Game }) {
     await supabase.from('gameStatEvents').delete().eq('id', id);
   }
 
+  const lastEvent = events[0];
+  const lastEventPlayer = lastEvent ? playersById.get(lastEvent.playerId) : undefined;
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -98,6 +101,17 @@ export function LiveStatsTab({ game }: { game: Game }) {
           </button>
         ))}
       </div>
+
+      <button
+        type="button"
+        onClick={() => lastEvent && undoEvent(lastEvent.id)}
+        disabled={!lastEvent}
+        className="min-h-11 w-full mb-4 rounded-lg border-2 border-amber-400 bg-amber-100 text-amber-900 text-sm font-semibold active:bg-amber-200 disabled:opacity-40 disabled:border-gray-300 disabled:bg-gray-100 disabled:text-gray-400"
+      >
+        {lastEvent
+          ? `↩ Undo last: ${GAME_STAT_LABELS[lastEvent.statType]}${lastEvent.value != null ? ` (${lastEvent.value})` : ''} — ${lastEventPlayer ? `${lastEventPlayer.firstName} ${lastEventPlayer.lastName}` : 'Unknown'}`
+          : '↩ Undo last (nothing recorded yet)'}
+      </button>
 
       {onCourtCount < 6 ? (
         <p className="text-sm text-gray-500">
@@ -143,10 +157,10 @@ function PlayerStatCard({
   const srAvg = serveReceiveAverage(events, player.id);
 
   return (
-    <div className="rounded-lg border border-gray-200 p-2">
+    <div className="rounded-lg border border-gray-300 p-2 bg-white shadow-sm">
       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-        <span className="text-[10px] text-gray-400 shrink-0">Z{zone}</span>
-        <span className="font-medium text-gray-900 text-sm truncate">
+        <span className="text-[10px] text-gray-500 font-medium shrink-0">Z{zone}</span>
+        <span className="font-semibold text-gray-900 text-sm truncate">
           {player.firstName} {player.lastName}
         </span>
         <PositionBadges positions={player.positions} />
@@ -194,15 +208,15 @@ function PlayerStatCard({
 
       {showServeReceive && (
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-500 shrink-0 w-14">
+          <span className="text-[11px] text-gray-700 font-semibold shrink-0 w-14">
             SR{srAvg != null ? ` ${srAvg.toFixed(1)}` : ''}
           </span>
-          {[0, 1, 2, 3].map((v) => (
+          {SR_RATINGS.map((v) => (
             <button
               key={v}
               type="button"
               onClick={() => onRecord('serve_receive', v)}
-              className="min-h-8 min-w-8 flex-1 rounded-md border border-gray-300 text-xs font-semibold text-gray-700 active:bg-gray-100"
+              className={`min-h-9 min-w-9 flex-1 rounded-md text-sm font-bold ${SR_RATING_COLOR_CLASSES[v]}`}
             >
               {v}
             </button>
@@ -212,6 +226,17 @@ function PlayerStatCard({
     </div>
   );
 }
+
+// Filled, high-contrast buttons — easy to read/tap at a glance during live
+// play. Serve-receive ratings are color-coded by pass quality (0 = bad,
+// 3 = perfect), matching the common coaching-scoresheet convention.
+const SR_RATINGS = [0, 1, 2, 3] as const;
+const SR_RATING_COLOR_CLASSES: Record<(typeof SR_RATINGS)[number], string> = {
+  0: 'bg-rose-600 text-white active:bg-rose-700',
+  1: 'bg-orange-500 text-white active:bg-orange-600',
+  2: 'bg-amber-400 text-gray-900 active:bg-amber-500',
+  3: 'bg-emerald-600 text-white active:bg-emerald-700',
+};
 
 function StatButton({
   label,
@@ -225,13 +250,17 @@ function StatButton({
   color: 'gray' | 'green' | 'red';
 }) {
   const colorClasses: Record<typeof color, string> = {
-    gray: 'border-gray-300 text-gray-700 active:bg-gray-100',
-    green: 'border-emerald-300 text-emerald-700 active:bg-emerald-50',
-    red: 'border-rose-300 text-rose-700 active:bg-rose-50',
+    gray: 'bg-slate-600 active:bg-slate-700',
+    green: 'bg-emerald-600 active:bg-emerald-700',
+    red: 'bg-rose-600 active:bg-rose-700',
   };
   return (
-    <button type="button" onClick={onClick} className={`flex-1 min-h-9 rounded-md border text-xs font-medium ${colorClasses[color]}`}>
-      {label} <span className="font-semibold">{count}</span>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 min-h-10 rounded-md text-sm font-semibold text-white ${colorClasses[color]}`}
+    >
+      {label} <span className="font-bold">{count}</span>
     </button>
   );
 }
@@ -262,7 +291,7 @@ function RecentEvents({
               <button
                 type="button"
                 onClick={() => onUndo(e.id)}
-                className="min-h-8 px-2 rounded-md border border-gray-300 text-xs text-gray-500 shrink-0"
+                className="min-h-8 px-2.5 rounded-md bg-gray-200 text-xs font-semibold text-gray-700 active:bg-gray-300 shrink-0"
               >
                 ✕
               </button>

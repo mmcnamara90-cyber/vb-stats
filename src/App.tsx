@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { RosterScreen } from './features/roster/RosterScreen';
 import { TryoutsScreen } from './features/tryouts/TryoutsScreen';
 import { RosterBuilderScreen } from './features/tryouts/RosterBuilderScreen';
+import { GameDayScreen } from './features/games/GameDayScreen';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { clearStoredTeam, getStoredTeam, setStoredTeam } from './lib/auth';
 import type { Team } from './types';
 
-type Tab = 'roster' | 'tryouts' | 'roster_builder';
+type Tab = 'roster' | 'tryouts' | 'roster_builder' | 'game_day';
 
 function App() {
   const [team, setTeam] = useState<Team | null>(() => getStoredTeam());
@@ -57,6 +58,14 @@ function App() {
           Roster Builder
         </button>
         <button
+          onClick={() => setTab('game_day')}
+          className={`flex-1 min-h-11 text-base font-medium ${
+            tab === 'game_day' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'
+          }`}
+        >
+          🏐 Game Day
+        </button>
+        <button
           onClick={handleLogout}
           title="Log out"
           className="min-h-11 px-3 text-sm font-medium text-gray-400"
@@ -69,6 +78,7 @@ function App() {
         {tab === 'roster' && <RosterScreen />}
         {tab === 'tryouts' && <TryoutsScreen />}
         {tab === 'roster_builder' && <RosterBuilderScreen initialTeam={team} />}
+        {tab === 'game_day' && <GameDayScreen initialTeam={team} />}
       </main>
     </div>
   );

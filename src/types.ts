@@ -206,6 +206,51 @@ export interface StatEvent {
   timestamp: string;        // ISO datetime
 }
 
+// ===== Game Day (live scrimmage/match roster, lineup, and stat tracking) =====
+// Distinct from the legacy `Lineup`/`StatEvent` scaffold above (never wired
+// to a DB table) and from `SavedLineup` (the Roster Builder's "what would
+// this starting 6 look like" evaluation scratchpad) — these are the actual
+// live-game records: a real roster for a specific game (which can pull up
+// players from another team, e.g. Varsity call-ups playing with JV), a
+// per-set starting lineup, and per-player stat taps during play.
+
+export interface Game {
+  id: string;
+  team: Team;              // whose game this is, e.g. 'jv'
+  opponent: string;
+  date: string;             // ISO date
+  notes?: string;
+  rosterPlayerIds: string[]; // this game's full roster: home team + any call-ups
+  createdAt: string;        // ISO datetime
+}
+
+export interface GameLineup {
+  id: string;
+  gameId: string;
+  setNumber: number;
+  zoneAssignments: Partial<Record<CourtZone, string>>; // zone -> playerId, rotation 1 only; 2-6 derived
+  liberoPlayerId?: string;
+  createdAt: string;        // ISO datetime
+  updatedAt: string;        // ISO datetime
+}
+
+// Kept intentionally small relative to the full StatType/StatEvent scaffold
+// above — this covers exactly what's tracked live by role (see
+// gameStats.ts): hitters (attack_attempt/kill/attack_error + serve_receive),
+// passers (serve_receive only), setters (set_attempt + assist).
+export type GameStatType = 'attack_attempt' | 'kill' | 'attack_error' | 'serve_receive' | 'set_attempt' | 'assist';
+
+export interface GameStatEvent {
+  id: string;
+  gameId: string;
+  setNumber: number;
+  playerId: string;
+  statType: GameStatType;
+  value?: number;           // 0-3 rating, serve_receive only
+  rotation?: number;        // 1-6, which rotation was live when this was recorded
+  createdAt: string;        // ISO datetime
+}
+
 // ===== Growth tracking =====
 // Just reuse SkillScore with sessionType filtered — no separate table needed.
 // Growth report = SkillScore[] grouped by playerId + skill, sorted by scoredAt.

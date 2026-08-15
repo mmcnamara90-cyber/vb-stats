@@ -235,6 +235,55 @@ not tied to a live game/set.
   reusing `RadarChart`/`radar.ts`, on every bench/court/sub row — lets a
   coach check a player's 5-axis profile without navigating away.
 
+## Game Day — live roster/lineup/stat tracking
+
+Top-level nav tab (`src/features/games/GameDayScreen.tsx`, routed from
+`App.tsx`) — separate from the Roster Builder's Lineup Simulator (that's a
+pre-game evaluation scratchpad; this is the live-game record). Team switcher
++ game list → `GameDetailScreen.tsx` (Roster / Lineup / Live / Insights
+sub-tabs) once a game is selected.
+
+- **Data**: `games`, `gameLineups`, `gameStatEvents` tables (`Game`/
+  `GameLineup`/`GameStatEvent`/`GameStatType` in `types.ts`) — allow-all RLS
+  + realtime, same pattern as every other table. Distinct from the legacy
+  unused `Lineup`/`StatEvent` scaffold types that predate this feature (see
+  "Things NOT done" below) — those were never wired up; these are the real
+  implementation.
+- **Roster tab**: `games.rosterPlayerIds` is seeded on creation from the
+  chosen team's confirmed `rosterCandidates`, then freely editable — the
+  main use case is adding call-up players from another team (e.g. a few
+  Varsity players playing up in a JV scrimmage) via a cross-team player
+  search; call-ups get a "Call-up · [team]" badge on the roster list.
+- **Lineup tab**: same tap-to-place zone-assignment UI as the Lineup
+  Simulator (`zoneAssignmentsForRotation` from `lineupRotation.ts`, Rotation
+  1 is source of truth, 2-6 derived), but scoped per `(gameId, setNumber)`
+  in `gameLineups` instead of the Roster Builder's per-team `lineups` table.
+  Bench pool is the game's roster, not `rosterCandidates`. "+ Set" adds
+  additional sets (no best-of-3/5 enforcement — just an incrementing
+  number the coach controls).
+- **Live tab**: shows the 6 players on court for the selected set +
+  rotation (rotation is a manual toggle — the coach advances it, there's no
+  automatic side-out detection). Each player's stat buttons are driven by
+  `statRolesForPositions()` (`gameStats.ts`) off their tagged `Position`s,
+  unioned if a player has more than one:
+  - Hitter (OH/MB/OPP): Attempt / Kill / Error + serve receive 0-3 rating.
+  - Passer (DS_L): serve receive 0-3 rating only.
+  - Setter (S): Set Attempt / "Kill Off Set" (i.e. assist — a set that
+    converted to a kill).
+  Every tap inserts a `gameStatEvent` row (serve receive stores its 0-3 as
+  `value`, like `SkillScore` taps); a "Recent" log with tap-to-undo (hard
+  delete) handles live-entry corrections. Stat counts shown per player are
+  cumulative for the whole set, not just the current rotation — `rotation`
+  is stored on each event for later analysis, not used to filter the tally.
+- **Insights tab**: computed client-side from `gameStatEvents` via
+  `buildPlayerStatLine`/`buildInsights` in `gameStats.ts` — hitting %
+  ((kills−errors)/attempts), serve-receive average, setting conversion %
+  (assists/set attempts), plus simple threshold-based "working well"/"worth
+  a look" flags (documented in-app as computed, not AI-generated). Chosen
+  over a real LLM-generated summary because that needs a Supabase Edge
+  Function + Anthropic API key (secret can't live in this static site) —
+  a possible future upgrade, not built yet.
+
 ## Volleyball domain knowledge
 
 `docs/volleyball-domain-knowledge.md` — a coach-authored reference brief on
@@ -255,12 +304,19 @@ access control for minors' data) that are the coach's call, not assumed.
   timezones behind UTC) was flagged as a separate task chip; not fixed as
   part of this work — check if it was ever addressed before assuming it's
   fixed.
-- `Note`/`Lineup`/`StatEvent`/`Drill`/`PracticePlan` types exist for a future
-  phase (in-game stat tracking, practice planning) but have no UI or DB
-  tables yet. (Don't confuse the legacy `Lineup` type here with the
-  unrelated, actually-wired `SavedLineup`/lineups table used by the Lineup
-  Simulator above.) `docs/volleyball-domain-knowledge.md` has the design
-  brief for this phase — Match/Set/RotationState/StatEvent/
-  ServeReceiveFormation entities, current-rules-year libero/substitution
-  rules, and a list of open decisions (ruleset scope, stat-capture
-  granularity, access control) to make before building it.
+- `Note`/`Lineup`/`StatEvent`/`Drill`/`PracticePlan` types are an early
+  scaffold, still unused (no UI or DB tables) — superseded, not replaced,
+  by the actual Game Day feature above (`Game`/`GameLineup`/`GameStatEvent`
+  types, `games`/`gameLineups`/`gameStatEvents` tables). Don't confuse
+  either of these with `SavedLineup`/`lineups` (the Lineup Simulator's
+  separate pre-game scratchpad).
+- Game Day is a deliberately simplified slice of `docs/volleyball-domain-
+  knowledge.md`'s full design brief, built fast to pilot at a scrimmage —
+  it does NOT implement: best-of-3/5 set/match structure or win
+  conditions, libero designation/tracking, substitution-limit tracking,
+  rotational-fault validation, or serve-receive formation
+  planning/candidates (Section 1.7). Rotation advancement in the Live tab
+  is a manual coach toggle, not derived from serve/side-out state. If any
+  of that becomes a real need, read the domain doc's Section 2 data model
+  (Match/Set/RotationState/ServeReceiveFormation) before extending — the
+  current schema doesn't have the shape for it yet.

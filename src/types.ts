@@ -229,9 +229,25 @@ export interface GameLineup {
   gameId: string;
   setNumber: number;
   zoneAssignments: Partial<Record<CourtZone, string>>; // zone -> playerId, rotation 1 only; 2-6 derived
-  liberoPlayerId?: string;
+  subs: PlannedSub[];        // rotation-triggered player swaps planned ahead of time
+  liberoPlayerId?: string;   // the designated libero for this set
+  liberoForPlayerId?: string; // which Rotation-1 starter's back-row zones the libero shadows
   createdAt: string;        // ISO datetime
   updatedAt: string;        // ISO datetime
+}
+
+// A substitution the coach knows is coming at a specific point in the
+// rotation order — e.g. "Leila comes in for Olivia once we reach Rotation
+// 2." Takes effect for that rotation and every rotation after it (in
+// ascending numeric order, 1→6, not wrapping back around) until reversed
+// by another PlannedSub — e.g. subbing the original starter back in later.
+// Distinct from the libero swap below: this is a one-time, coach-declared
+// swap, not a recurring back-row/front-row pattern.
+export interface PlannedSub {
+  id: string;
+  outPlayerId: string;
+  inPlayerId: string;
+  effectiveRotation: number; // 1-6
 }
 
 // Kept intentionally small relative to the full StatType/StatEvent scaffold

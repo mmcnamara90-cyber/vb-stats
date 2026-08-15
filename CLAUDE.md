@@ -260,21 +260,63 @@ sub-tabs) once a game is selected.
   in `gameLineups` instead of the Roster Builder's per-team `lineups` table.
   Bench pool is the game's roster, not `rosterCandidates`. "+ Set" adds
   additional sets (no best-of-3/5 enforcement — just an incrementing
-  number the coach controls).
+  number the coach controls). Also hosts **Planned Substitutions** and
+  **Libero** config (see below) — both scoped to the same `gameLineups`
+  row (per set), since either can differ set to set.
+- **Planned substitutions**: `GameLineup.subs` (`PlannedSub[]` in
+  `types.ts`) — the coach declares a swap ahead of time keyed to the
+  rotation it starts at (e.g. "Leila in for Olivia starting Rotation 2").
+  Applied cumulatively in ascending `effectiveRotation` order (chainable —
+  a later sub can bring the original starter back in) for every rotation
+  from there on, **1→6 linearly, not wrapping** — the app doesn't track
+  how many times the team has cycled through the rotation order in a set,
+  so a sub declared "from Rotation 2" stays in effect through 3,4,5,6,1
+  without re-evaluating; this is a deliberate simplification, not a rules
+  model.
+- **Libero**: `GameLineup.liberoPlayerId` + `liberoForPlayerId` — the
+  libero shadows one specific Rotation-1 starter's slot and takes over
+  that zone whenever it's back row (1/5/6), computed off the *raw*
+  Rotation-1 map so she keeps tracking that teammate regardless of what a
+  planned sub did elsewhere. Only a single libero/single shadowed player
+  is supported (not the 2-libero or libero-for-two-positions schemes) —
+  matches what was asked for, see `docs/volleyball-domain-knowledge.md`
+  §1.3 for the fuller rule if that's ever needed. "Serves at Rotation N"
+  is *computed*, not entered — a single-target libero can only reach
+  Zone 1 (the server spot) once per 6-rotation cycle, so the NFHS "only
+  one position in the serving order" constraint falls out of the math
+  automatically rather than needing separate enforcement.
 - **Live tab**: shows the 6 players on court for the selected set +
   rotation (rotation is a manual toggle — the coach advances it, there's no
-  automatic side-out detection). Each player's stat buttons are driven by
-  `statRolesForPositions()` (`gameStats.ts`) off their tagged `Position`s,
-  unioned if a player has more than one:
+  automatic side-out detection), computed via `computeEffectiveCourt()`
+  (`effectiveCourt.ts`) which layers mechanical rotation → planned subs →
+  libero swap, in that order, on every rotation including Rotation 1 (so a
+  libero who starts the set already on the court shows correctly). A
+  violet banner above the roster names any subs/libero active for the
+  current rotation. A player playing libero this rotation never gets
+  attack buttons (libero can't attack) regardless of her tagged position —
+  see `showAttack` in `LiveStatsTab.tsx`. Each player's stat buttons are
+  otherwise driven by `statRolesForPositions()` (`gameStats.ts`) off their
+  tagged `Position`s, unioned if a player has more than one:
   - Hitter (OH/MB/OPP): Attempt / Kill / Error + serve receive 0-3 rating.
   - Passer (DS_L): serve receive 0-3 rating only.
   - Setter (S): Set Attempt / "Kill Off Set" (i.e. assist — a set that
     converted to a kill).
   Every tap inserts a `gameStatEvent` row (serve receive stores its 0-3 as
-  `value`, like `SkillScore` taps); a "Recent" log with tap-to-undo (hard
-  delete) handles live-entry corrections. Stat counts shown per player are
-  cumulative for the whole set, not just the current rotation — `rotation`
-  is stored on each event for later analysis, not used to filter the tally.
+  `value`, like `SkillScore` taps); a one-tap "Undo last" button above the
+  roster undoes the single most recent tap (names what it'll undo before
+  you commit), and a "Recent" log below with per-row tap-to-undo (hard
+  delete) handles corrections further back. Stat counts shown per player
+  are cumulative for the whole set, not just the current rotation —
+  `rotation` is stored on each event for later analysis, not used to
+  filter the tally.
+  - **Gotcha already hit once, worth knowing**: `effectiveCourt.ts`
+    deliberately never does `Object.keys(zoneMap) as CourtZone[]` — a
+    zone map's keys come back as strings ("5") even though `CourtZone` is
+    numeric, so comparing a key against a numeric zone list with
+    `.includes()`/`===` silently never matches. It iterates a fixed
+    `[1,2,3,4,5,6]` array and indexes into the map instead (safe, since
+    JS coerces numeric-vs-string keys on property *access*, just not on
+    equality checks). Don't reintroduce the `Object.keys` pattern here.
 - **Insights tab**: computed client-side from `gameStatEvents` via
   `buildPlayerStatLine`/`buildInsights` in `gameStats.ts` — hitting %
   ((kills−errors)/attempts), serve-receive average, setting conversion %

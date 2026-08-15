@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { CourtZone, Game, GameLineup, GameStatEvent, GameStatType, Player } from '../../types';
-import { zoneAssignmentsForRotation } from '../tryouts/lineupRotation';
 import { PositionBadges } from '../tryouts/PositionBadges';
 import { GAME_STAT_LABELS, countEvents, serveReceiveAverage, statRolesForPositions } from './gameStats';
+import { computeEffectiveCourt } from './effectiveCourt';
 
 const ROTATIONS = [1, 2, 3, 4, 5, 6] as const;
 // Net row first (where the action mostly is), then back row.
@@ -40,8 +40,11 @@ export function LiveStatsTab({ game }: { game: Game }) {
   const lineup = lineups.find((l) => l.setNumber === setNumber);
   const setNumbers = [...new Set([1, setNumber, ...lineups.map((l) => l.setNumber)])].sort((a, b) => a - b);
 
-  const zoneAssignments = lineup?.zoneAssignments ?? {};
-  const onCourt = rotation === 1 ? zoneAssignments : zoneAssignmentsForRotation(zoneAssignments, rotation);
+  const effective = computeEffectiveCourt(
+    lineup ?? { zoneAssignments: {}, subs: [] },
+    rotation,
+  );
+  const onCourt = effective.zoneAssignments;
   const onCourtCount = ZONE_ORDER.filter((z) => onCourt[z]).length;
 
   async function recordStat(playerId: string, statType: GameStatType, value?: number) {
@@ -113,6 +116,24 @@ export function LiveStatsTab({ game }: { game: Game }) {
           : '↩ Undo last (nothing recorded yet)'}
       </button>
 
+      {(effective.activeSubs.length > 0 || effective.liberoZone) && (
+        <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 mb-3 text-xs text-violet-900 space-y-0.5">
+          {effective.activeSubs.map((s) => (
+            <p key={s.id}>
+              🔁 {playersById.get(s.inPlayerId)?.firstName ?? 'Unknown'} in for{' '}
+              {playersById.get(s.outPlayerId)?.firstName ?? 'Unknown'} (since Rotation {s.effectiveRotation})
+            </p>
+          ))}
+          {effective.liberoZone && (
+            <p>
+              🛡 Libero {playersById.get(onCourt[effective.liberoZone] ?? '')?.firstName ?? ''} in at Zone{' '}
+              {effective.liberoZone}
+              {effective.liberoServing ? ' — serving this rotation 🎯' : ''}
+            </p>
+          )}
+        </div>
+      )}
+
       {onCourtCount < 6 ? (
         <p className="text-sm text-gray-500">
           Set all 6 starting spots for Set {setNumber} on the Lineup tab first — {onCourtCount}/6 filled.
@@ -129,6 +150,8 @@ export function LiveStatsTab({ game }: { game: Game }) {
                 player={player}
                 zone={zone}
                 events={events}
+                isLibero={effective.liberoZone === zone}
+                isServing={effective.liberoServing && effective.liberoZone === zone}
                 onRecord={(t, v) => recordStat(player.id, t, v)}
               />
             );
@@ -145,28 +168,42 @@ function PlayerStatCard({
   player,
   zone,
   events,
+  isLibero,
+  isServing,
   onRecord,
 }: {
   player: Player;
   zone: CourtZone;
   events: GameStatEvent[];
+  isLibero: boolean;
+  isServing: boolean;
   onRecord: (statType: GameStatType, value?: number) => void;
 }) {
   const roles = statRolesForPositions(player.positions);
-  const showServeReceive = roles.hitter || roles.passer;
+  // A libero can't attack, regardless of what position she's normally
+  // tagged (e.g. a DS_L/OPP player playing libero this rotation) — hide
+  // the attack block rather than show buttons for a play that can't
+  // legally happen right now.
+  const showAttack = roles.hitter && !isLibero;
+  const showServeReceive = roles.hitter || roles.passer || isLibero;
   const srAvg = serveReceiveAverage(events, player.id);
 
   return (
-    <div className="rounded-lg border border-gray-300 p-2 bg-white shadow-sm">
+    <div className={`rounded-lg border p-2 bg-white shadow-sm ${isLibero ? 'border-violet-400' : 'border-gray-300'}`}>
       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
         <span className="text-[10px] text-gray-500 font-medium shrink-0">Z{zone}</span>
         <span className="font-semibold text-gray-900 text-sm truncate">
           {player.firstName} {player.lastName}
         </span>
         <PositionBadges positions={player.positions} />
+        {isLibero && (
+          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-medium bg-violet-100 text-violet-700">
+            🛡 Libero{isServing ? ' · serving' : ''}
+          </span>
+        )}
       </div>
 
-      {roles.hitter && (
+      {showAttack && (
         <div className="flex gap-1.5 mb-1.5">
           <StatButton
             label="Attempt"

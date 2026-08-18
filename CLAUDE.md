@@ -318,11 +318,12 @@ sub-tabs) once a game is selected.
   a libero who starts the set already on the court shows correctly). A
   violet banner above the roster names any subs/libero(s) active for the
   current rotation, plus the conflict warning if both liberos would be on
-  court at once. A player playing libero this rotation never gets attack
-  buttons (libero can't attack) regardless of her tagged position — see
-  `showAttack` in `LiveStatsTab.tsx`. Each player's stat buttons are
-  otherwise driven by `statRolesForPositions()` (`gameStats.ts`) off their
-  tagged `Position`s, unioned if a player has more than one:
+  court at once (desktop view only — hidden in mobile view, see below). A
+  player playing libero this rotation never gets attack buttons (libero
+  can't attack) regardless of her tagged position — see `showAttack` in
+  `LiveStatsTab.tsx`. Each player's stat buttons are otherwise driven by
+  `statRolesForPositions()` (`gameStats.ts`) off their tagged `Position`s,
+  unioned if a player has more than one:
   - Hitter (OH/MB/OPP): Attempt / Kill / Error + serve receive 0-3 rating.
   - Passer (DS_L): serve receive 0-3 rating only.
   - Setter (S): Set Attempt / "Kill Off Set" (i.e. assist — a set that
@@ -331,10 +332,26 @@ sub-tabs) once a game is selected.
   `value`, like `SkillScore` taps); a one-tap "Undo last" button above the
   roster undoes the single most recent tap (names what it'll undo before
   you commit), and a "Recent" log below with per-row tap-to-undo (hard
-  delete) handles corrections further back. Stat counts shown per player
-  are cumulative for the whole set, not just the current rotation —
-  `rotation` is stored on each event for later analysis, not used to
-  filter the tally.
+  delete) handles corrections further back — hidden in mobile view along
+  with the sub/libero banner, to keep that view pared down. Stat counts
+  shown per player are cumulative for the whole set, not just the current
+  rotation — `rotation` is stored on each event for later analysis, not
+  used to filter the tally.
+  - **Two layouts, one component**: `LiveStatsTab.tsx` renders either a
+    **desktop/iPad layout** (assumes a bigger screen, no toggle needed) —
+    on-court cards in a `grid-cols-2` two-column grid so all 6 fit without
+    scrolling, each card's serve-receive 0-3 buttons arranged as a 2x2
+    square (0/1 over 2/3) pinned to the card's left edge, attack/setter
+    buttons stacked to its right — or a **mobile layout**, toggled on with
+    the "📱 Mobile view" button (state persisted in `localStorage`, keys
+    `vb-stats-mobile-view`/`vb-stats-mobile-category`, so it survives a
+    phone reload mid-game). Mobile view picks one of three categories
+    (Attack / Serve Receive / Setting, default Serve Receive since that's
+    the most common one-handed live-tracking use case) and shows only the
+    on-court players that category applies to, one per row, with large
+    (`min-h-14`+) touch targets — everyone else and every other stat block
+    is hidden. Both layouts share the same `StatButton`/`SR_RATING_COLOR_CLASSES`
+    building blocks (`StatButton` takes a `large` prop for the mobile size).
   - **Gotcha already hit once, worth knowing**: `effectiveCourt.ts`
     deliberately never does `Object.keys(zoneMap) as CourtZone[]` — a
     zone map's keys come back as strings ("5") even though `CourtZone` is
@@ -343,14 +360,35 @@ sub-tabs) once a game is selected.
     `[1,2,3,4,5,6]` array and indexes into the map instead (safe, since
     JS coerces numeric-vs-string keys on property *access*, just not on
     equality checks). Don't reintroduce the `Object.keys` pattern here.
-- **Insights tab**: computed client-side from `gameStatEvents` via
-  `buildPlayerStatLine`/`buildInsights` in `gameStats.ts` — hitting %
-  ((kills−errors)/attempts), serve-receive average, setting conversion %
-  (assists/set attempts), plus simple threshold-based "working well"/"worth
-  a look" flags (documented in-app as computed, not AI-generated). Chosen
-  over a real LLM-generated summary because that needs a Supabase Edge
-  Function + Anthropic API key (secret can't live in this static site) —
-  a possible future upgrade, not built yet.
+- **Insights tab**: computed client-side from `gameStatEvents`, all in
+  `gameStats.ts` — no AI/LLM call, documented in-app as computed. Four
+  sections, in order:
+  - ✅/👀 Per-player working-well/worth-a-look flags: `buildPlayerStatLine`/
+    `buildInsights` — hitting % ((kills−errors)/attempts), serve-receive
+    average, setting conversion % (assists/set attempts), threshold-based.
+  - 📈 Trending: `buildPlayerTrends`/`describePlayerTrend` — splits each
+    player's *own* chronological taps (by `createdAt`) in half and compares
+    early vs. late on whichever metric applies to their role (hitting/SR/
+    setting conversion), flagging rising/falling past a fixed delta
+    threshold. This is a **within-game** trend only (first half of tonight's
+    taps vs. second half) — there's no cross-game history plumbed into this
+    tab, so don't read it as a multi-game trajectory.
+  - 🔁 By rotation + a full 6-row breakdown table: `buildRotationOffenseLines`/
+    `buildRotationServeReceiveLines`/`buildRotationInsights` — groups the
+    same taps by the `rotation` field already stored on every
+    `gameStatEvent` instead of by player, and calls out the best/worst
+    rotation for hitting% and for serve-receive average (only when there's
+    more than one rotation with enough reps to compare). **This is a proxy
+    for offensive production, not actual points/rally outcomes** — the app
+    doesn't track score, so "which rotation scores more" reads as "which
+    rotation's recorded kills/hitting% look best," not a real side-out or
+    point-scoring rate off a scoreboard. Worth being explicit about this
+    with the coach if it ever comes up — flagged here so it isn't
+    mistaken for real point-differential-by-rotation.
+  - Box score (unchanged from before).
+  Real LLM-generated insights would need a Supabase Edge Function +
+  Anthropic API key (secret can't live in this static site) — a possible
+  future upgrade, not built yet; everything above is rule-based.
 
 ## Volleyball domain knowledge
 

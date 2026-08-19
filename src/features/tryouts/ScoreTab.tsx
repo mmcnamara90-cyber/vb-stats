@@ -17,6 +17,7 @@ import { POSITIONS, POSITION_LABELS, POSITION_SHORT_LABELS, SKILL_LABELS } from 
 import { TEAMS, TEAM_LEVEL } from './teams';
 import { matchesPlayerQuery, playerGradeLabel } from '../../lib/playerSearch';
 import { PlayerSearchInput } from '../roster/PlayerSearchInput';
+import { DrillRunInsights } from './DrillRunInsights';
 
 const checkboxClass = (checked: boolean) =>
   `h-5 w-5 rounded border flex items-center justify-center shrink-0 text-xs ${
@@ -24,6 +25,13 @@ const checkboxClass = (checked: boolean) =>
   }`;
 
 export function ScoreTab({ session }: { session: Session | undefined }) {
+  // Which drill run's insights are being viewed — either the one that was
+  // just ended (auto-navigated to from ActiveDrillRun) or one picked from
+  // StartDrillForm's Recent Runs list. Takes priority over the active-run
+  // check below so ending a run lands here instead of bouncing back to the
+  // start-a-new-drill form.
+  const [viewingRunId, setViewingRunId] = useState<string | null>(null);
+
   const drills = useLiveQuery(async () => {
     const { data } = await supabase.from('tryoutDrills').select('*').order('name');
     return (data as TryoutDrill[]) ?? [];
@@ -34,18 +42,23 @@ export function ScoreTab({ session }: { session: Session | undefined }) {
     return (data as DrillRun) ?? undefined;
   }, []);
 
-  if (activeRun) {
-    return <ActiveDrillRun run={activeRun} drills={drills} session={session} />;
+  if (viewingRunId) {
+    return <DrillRunInsights runId={viewingRunId} onBack={() => setViewingRunId(null)} />;
   }
-  return <StartDrillForm session={session} drills={drills} />;
+  if (activeRun) {
+    return <ActiveDrillRun run={activeRun} drills={drills} session={session} onEnded={setViewingRunId} />;
+  }
+  return <StartDrillForm session={session} drills={drills} onViewRun={setViewingRunId} />;
 }
 
 function StartDrillForm({
   session,
   drills,
+  onViewRun,
 }: {
   session: Session | undefined;
   drills: TryoutDrill[] | undefined;
+  onViewRun: (runId: string) => void;
 }) {
   const [drillId, setDrillId] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -130,6 +143,19 @@ function StartDrillForm({
     };
     await supabase.from('drillRuns').insert(run);
   }
+
+  // So a coach can jump back into a past run's insights (not just the one
+  // that was just ended) — e.g. to re-check yesterday's serve-receive group
+  // before today's session.
+  const recentRuns = useLiveQuery(async () => {
+    const { data } = await supabase
+      .from('drillRuns')
+      .select('*')
+      .not('endedAt', 'is', null)
+      .order('endedAt', { ascending: false })
+      .limit(8);
+    return (data as DrillRun[]) ?? [];
+  }, []);
 
   return (
     <div>
@@ -256,6 +282,34 @@ function StartDrillForm({
       >
         Start Drill
       </button>
+
+      {recentRuns !== undefined && recentRuns.length > 0 && (
+        <div className="mt-6">
+          <p className="text-sm font-medium text-gray-700 mb-2">Recent Runs</p>
+          <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 overflow-hidden">
+            {recentRuns.map((run) => {
+              const runDrill = drills?.find((d) => d.id === run.drillId);
+              return (
+                <li key={run.id}>
+                  <button
+                    type="button"
+                    onClick={() => onViewRun(run.id)}
+                    className="w-full min-h-11 flex items-center justify-between gap-3 px-4 py-2 text-left active:bg-gray-50"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium text-gray-900">{runDrill?.name ?? 'Drill'}</span>
+                      <span className="text-sm text-gray-500"> · {run.playerIds.length} players</span>
+                    </span>
+                    <span className="text-sm text-gray-500 shrink-0">
+                      {new Date(run.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -264,10 +318,12 @@ function ActiveDrillRun({
   run,
   drills,
   session,
+  onEnded,
 }: {
   run: DrillRun;
   drills: TryoutDrill[] | undefined;
   session: Session | undefined;
+  onEnded: (runId: string) => void;
 }) {
   const drill = drills?.find((d) => d.id === run.drillId);
   const playerIdsKey = run.playerIds.join(',');
@@ -337,6 +393,7 @@ function ActiveDrillRun({
 
   async function endDrill() {
     await supabase.from('drillRuns').update({ endedAt: new Date().toISOString() }).eq('id', run.id);
+    onEnded(run.id);
   }
 
   return (

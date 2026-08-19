@@ -3,19 +3,19 @@ import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { CourtZone, Game, GameLineup, GameStatEvent, GameStatType, Player } from '../../types';
 import { PositionBadges } from '../tryouts/PositionBadges';
-import { GAME_STAT_LABELS, countEvents, serveReceiveAverage, statRolesForPositions } from './gameStats';
+import { GAME_STAT_LABELS, countEvents, serveAverage, serveReceiveAverage, statRolesForPositions } from './gameStats';
 import { computeEffectiveCourt } from './effectiveCourt';
 
 const ROTATIONS = [1, 2, 3, 4, 5, 6] as const;
 // Net row first (where the action mostly is), then back row.
 const ZONE_ORDER: CourtZone[] = [4, 3, 2, 5, 6, 1];
 
-type MobileCategory = 'attack' | 'serve_receive' | 'setting';
-const MOBILE_CATEGORIES: MobileCategory[] = ['serve_receive', 'attack', 'setting'];
+type MobileCategory = 'attack' | 'serve_receive' | 'assist';
+const MOBILE_CATEGORIES: MobileCategory[] = ['serve_receive', 'attack', 'assist'];
 const MOBILE_CATEGORY_LABELS: Record<MobileCategory, string> = {
   attack: 'Attack',
   serve_receive: 'Serve Receive',
-  setting: 'Setting',
+  assist: 'Assist',
 };
 
 // Device-level preference — a coach handing their phone to an assistant to
@@ -34,7 +34,7 @@ function readStoredMobileView(): boolean {
 function readStoredMobileCategory(): MobileCategory {
   try {
     const v = localStorage.getItem(MOBILE_CATEGORY_KEY);
-    if (v === 'attack' || v === 'serve_receive' || v === 'setting') return v;
+    if (v === 'attack' || v === 'serve_receive' || v === 'assist') return v;
   } catch {
     // ignore
   }
@@ -94,6 +94,8 @@ export function LiveStatsTab({ game }: { game: Game }) {
   );
   const onCourt = effective.zoneAssignments;
   const onCourtCount = ZONE_ORDER.filter((z) => onCourt[z]).length;
+  const serverId = onCourt[1];
+  const server = serverId ? playersById.get(serverId) : undefined;
 
   async function recordStat(playerId: string, statType: GameStatType, value?: number) {
     const event: GameStatEvent = {
@@ -125,7 +127,7 @@ export function LiveStatsTab({ game }: { game: Game }) {
           type="button"
           onClick={() => setMobileView((v) => !v)}
           className={`min-h-9 px-3 rounded-lg text-sm font-medium border ${
-            mobileView ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300'
+            mobileView ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
           }`}
         >
           📱 Mobile view {mobileView ? 'On' : 'Off'}
@@ -138,7 +140,7 @@ export function LiveStatsTab({ game }: { game: Game }) {
                 type="button"
                 onClick={() => setMobileCategory(c)}
                 className={`min-h-9 px-2.5 rounded-lg text-xs font-medium border ${
-                  mobileCategory === c ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                  mobileCategory === c ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
                 }`}
               >
                 {MOBILE_CATEGORY_LABELS[c]}
@@ -159,7 +161,7 @@ export function LiveStatsTab({ game }: { game: Game }) {
               setRotation(1);
             }}
             className={`min-h-9 px-3 rounded-lg text-sm font-medium border ${
-              setNumber === n ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300'
+              setNumber === n ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
             }`}
           >
             {n}
@@ -175,13 +177,23 @@ export function LiveStatsTab({ game }: { game: Game }) {
             type="button"
             onClick={() => setRotation(r)}
             className={`min-h-9 px-3 rounded-lg text-sm font-medium border ${
-              rotation === r ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+              rotation === r ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
             }`}
           >
             {r}
           </button>
         ))}
       </div>
+
+      {/* Serve score — whoever's in Zone 1 this rotation is the server;
+          rotation determines the server, not a separate selection. */}
+      {server && (
+        <ServeScoreBar
+          server={server}
+          serveAvg={serveAverage(events, server.id)}
+          onRecord={(v) => recordStat(server.id, 'serve', v)}
+        />
+      )}
 
       <button
         type="button"
@@ -258,7 +270,43 @@ export function LiveStatsTab({ game }: { game: Game }) {
   );
 }
 
-// ===== Desktop / iPad view: two-column grid, SR as a 2x2 square on the left =====
+// ===== Serve score — top of the tracking area, tied to the current server =====
+
+function ServeScoreBar({
+  server,
+  serveAvg,
+  onRecord,
+}: {
+  server: Player;
+  serveAvg: number | undefined;
+  onRecord: (value: number) => void;
+}) {
+  return (
+    <div className="rounded-lg border-2 border-brand-indigo bg-white px-3 py-2 mb-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-sm font-semibold text-brand-indigo">
+          🏐 Serving: {server.firstName} {server.lastName}
+        </span>
+        {serveAvg != null && <span className="text-xs font-medium text-gray-600">{serveAvg.toFixed(1)} avg</span>}
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {SR_RATINGS.map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => onRecord(v)}
+            className={`min-h-10 rounded-md text-base font-bold ${SR_RATING_COLOR_CLASSES[v]}`}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ===== Desktop / iPad view: two-column grid; SR square (left) — Assist
+// (middle) — Attack/Kill/Error stacked (right, wider than the SR square) =====
 
 function PlayerStatCard({
   player,
@@ -279,10 +327,9 @@ function PlayerStatCard({
   // A libero can't attack, regardless of what position she's normally
   // tagged (e.g. a DS_L/OPP player playing libero this rotation) — hide
   // the attack block rather than show buttons for a play that can't
-  // legally happen right now.
-  const showAttack = roles.hitter && !isLibero;
+  // legally happen right now. Setters get attack options too now.
+  const showAttack = (roles.hitter || roles.setter) && !isLibero;
   const showServeReceive = roles.hitter || roles.passer || isLibero;
-  const showSetter = roles.setter;
   const srAvg = serveReceiveAverage(events, player.id);
 
   return (
@@ -300,7 +347,7 @@ function PlayerStatCard({
         )}
       </div>
 
-      <div className="flex gap-2 items-start">
+      <div className="flex gap-1.5 items-stretch">
         {showServeReceive && (
           <div className="shrink-0 flex flex-col items-center gap-1">
             <span className="text-[10px] text-gray-700 font-semibold leading-none">
@@ -321,47 +368,41 @@ function PlayerStatCard({
           </div>
         )}
 
-        {(showAttack || showSetter) && (
-          <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-            {showAttack && (
-              <div className="flex gap-1">
-                <StatButton
-                  label="Att"
-                  count={countEvents(events, player.id, 'attack_attempt')}
-                  onClick={() => onRecord('attack_attempt')}
-                  color="gray"
-                />
-                <StatButton
-                  label="Kill"
-                  count={countEvents(events, player.id, 'kill')}
-                  onClick={() => onRecord('kill')}
-                  color="green"
-                />
-                <StatButton
-                  label="Err"
-                  count={countEvents(events, player.id, 'attack_error')}
-                  onClick={() => onRecord('attack_error')}
-                  color="red"
-                />
-              </div>
-            )}
+        {/* Assist — available to every on-court player, sits between serve
+            receive and the hitting boxes. Used to redirect credit when the
+            back-row setter wasn't the one who actually set the ball. */}
+        <button
+          type="button"
+          onClick={() => onRecord('assist')}
+          className="shrink-0 w-14 rounded-md bg-sky-600 active:bg-sky-700 text-white flex flex-col items-center justify-center gap-0.5"
+        >
+          <span className="text-[10px] font-semibold leading-none">Assist</span>
+          <span className="text-base font-extrabold leading-none">{countEvents(events, player.id, 'assist')}</span>
+        </button>
 
-            {showSetter && (
-              <div className="flex gap-1">
-                <StatButton
-                  label="Set"
-                  count={countEvents(events, player.id, 'set_attempt')}
-                  onClick={() => onRecord('set_attempt')}
-                  color="gray"
-                />
-                <StatButton
-                  label="Kill Off Set"
-                  count={countEvents(events, player.id, 'assist')}
-                  onClick={() => onRecord('assist')}
-                  color="green"
-                />
-              </div>
-            )}
+        {showAttack && (
+          <div className="flex-1 min-w-0 flex flex-col gap-1">
+            <StatButton
+              label="Attempt"
+              count={countEvents(events, player.id, 'attack_attempt')}
+              onClick={() => onRecord('attack_attempt')}
+              color="gray"
+              stack
+            />
+            <StatButton
+              label="Kill"
+              count={countEvents(events, player.id, 'kill')}
+              onClick={() => onRecord('kill')}
+              color="green"
+              stack
+            />
+            <StatButton
+              label="Error"
+              count={countEvents(events, player.id, 'attack_error')}
+              onClick={() => onRecord('attack_error')}
+              color="red"
+              stack
+            />
           </div>
         )}
       </div>
@@ -400,8 +441,8 @@ function MobileStatList({
 
   const applicableRows = rows.filter(({ player, isLibero }) => {
     const roles = statRolesForPositions(player.positions);
-    if (category === 'attack') return roles.hitter && !isLibero;
-    if (category === 'setting') return roles.setter;
+    if (category === 'attack') return (roles.hitter || roles.setter) && !isLibero;
+    if (category === 'assist') return true; // everyone
     return roles.hitter || roles.passer || isLibero; // serve_receive
   });
 
@@ -485,23 +526,14 @@ function MobileStatRow({
         </div>
       )}
 
-      {category === 'setting' && (
-        <div className="flex gap-2">
-          <StatButton
-            label={GAME_STAT_LABELS.set_attempt}
-            count={countEvents(events, player.id, 'set_attempt')}
-            onClick={() => onRecord('set_attempt')}
-            color="gray"
-            large
-          />
-          <StatButton
-            label={GAME_STAT_LABELS.assist}
-            count={countEvents(events, player.id, 'assist')}
-            onClick={() => onRecord('assist')}
-            color="green"
-            large
-          />
-        </div>
+      {category === 'assist' && (
+        <button
+          type="button"
+          onClick={() => onRecord('assist')}
+          className="w-full min-h-14 rounded-lg bg-sky-600 active:bg-sky-700 text-white text-base font-semibold"
+        >
+          {GAME_STAT_LABELS.assist} <span className="font-extrabold text-lg">{countEvents(events, player.id, 'assist')}</span>
+        </button>
       )}
 
       {category === 'serve_receive' && (
@@ -523,7 +555,7 @@ function MobileStatRow({
 }
 
 // Filled, high-contrast buttons — easy to read/tap at a glance during live
-// play. Serve-receive ratings are color-coded by pass quality (0 = bad,
+// play. Serve-receive/serve ratings are color-coded by quality (0 = bad,
 // 3 = perfect), matching the common coaching-scoresheet convention.
 const SR_RATINGS = [0, 1, 2, 3] as const;
 const SR_RATING_COLOR_CLASSES: Record<(typeof SR_RATINGS)[number], string> = {
@@ -539,12 +571,14 @@ function StatButton({
   onClick,
   color,
   large,
+  stack,
 }: {
   label: string;
   count: number;
   onClick: () => void;
   color: 'gray' | 'green' | 'red';
   large?: boolean;
+  stack?: boolean;
 }) {
   const colorClasses: Record<typeof color, string> = {
     gray: 'bg-slate-600 active:bg-slate-700',
@@ -555,7 +589,7 @@ function StatButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 rounded-md font-semibold text-white ${colorClasses[color]} ${
+      className={`${stack ? 'w-full' : 'flex-1'} rounded-md font-semibold text-white ${colorClasses[color]} ${
         large ? 'min-h-14 text-base' : 'min-h-9 text-xs'
       }`}
     >

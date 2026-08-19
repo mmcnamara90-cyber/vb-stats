@@ -55,7 +55,7 @@ export function BenchmarksTab() {
             onClick={() => setLevel(lvl)}
             className={`min-h-11 px-3 rounded-lg text-sm font-medium border ${
               level === lvl
-                ? 'bg-blue-600 text-white border-blue-600'
+                ? 'bg-brand-indigo text-white border-brand-indigo'
                 : 'bg-white text-gray-700 border-gray-300'
             }`}
           >
@@ -97,14 +97,14 @@ export function BenchmarksTab() {
                         onChange={(e) =>
                           setManual(position, skill, e.target.value === '' ? null : Number(e.target.value))
                         }
-                        className="w-14 min-h-9 rounded border border-gray-300 text-center text-sm focus:border-blue-500 focus:outline-none"
+                        className="w-14 min-h-9 rounded border border-gray-300 text-center text-sm focus:border-brand-indigo focus:outline-none"
                       />
                       {suggestion && (
                         <button
                           type="button"
                           onClick={() => setManual(position, skill, Number(suggestion.suggestedValue.toFixed(1)))}
                           title={`Apply computed suggestion (n=${suggestion.sampleSize})`}
-                          className="block w-full text-[11px] text-blue-600 mt-0.5"
+                          className="block w-full text-[11px] text-brand-indigo mt-0.5"
                         >
                           sugg. {suggestion.suggestedValue.toFixed(1)}
                         </button>

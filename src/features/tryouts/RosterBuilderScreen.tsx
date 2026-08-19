@@ -22,7 +22,7 @@ export function RosterBuilderScreen({ initialTeam }: { initialTeam?: Team }) {
               type="button"
               onClick={() => setTeam(t)}
               className={`min-h-11 px-4 rounded-lg text-sm font-medium border ${
-                team === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                team === t ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
               }`}
             >
               {TEAM_LABELS[t]}
@@ -34,7 +34,7 @@ export function RosterBuilderScreen({ initialTeam }: { initialTeam?: Team }) {
             type="button"
             onClick={() => setView('roster')}
             className={`min-h-11 px-3 rounded-lg text-sm font-medium border ${
-              view === 'roster' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300'
+              view === 'roster' ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
             }`}
           >
             Roster
@@ -43,7 +43,7 @@ export function RosterBuilderScreen({ initialTeam }: { initialTeam?: Team }) {
             type="button"
             onClick={() => setView('lineups')}
             className={`min-h-11 px-3 rounded-lg text-sm font-medium border ${
-              view === 'lineups' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300'
+              view === 'lineups' ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
             }`}
           >
             🏐 Lineups

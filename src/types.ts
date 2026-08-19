@@ -267,9 +267,19 @@ export interface LiberoAssignment {
 
 // Kept intentionally small relative to the full StatType/StatEvent scaffold
 // above — this covers exactly what's tracked live by role (see
-// gameStats.ts): hitters (attack_attempt/kill/attack_error + serve_receive),
-// passers (serve_receive only), setters (set_attempt + assist).
-export type GameStatType = 'attack_attempt' | 'kill' | 'attack_error' | 'serve_receive' | 'set_attempt' | 'assist';
+// gameStats.ts): hitters/setters (attack_attempt/kill/attack_error +
+// serve_receive), passers (serve_receive only), anyone on court (assist),
+// whoever's in Zone 1 this rotation (serve). `set_attempt` is historical —
+// no UI writes it anymore (see gameStats.ts), kept so old games' data still
+// reads back correctly.
+export type GameStatType =
+  | 'attack_attempt'
+  | 'kill'
+  | 'attack_error'
+  | 'serve_receive'
+  | 'set_attempt'
+  | 'assist'
+  | 'serve';
 
 export interface GameStatEvent {
   id: string;

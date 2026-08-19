@@ -50,7 +50,7 @@ export function DrillsTab() {
         <p className="text-sm text-gray-500">Drills feed skill scores during tryouts.</p>
         <button
           onClick={openAdd}
-          className="min-h-11 px-4 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700"
+          className="min-h-11 px-4 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark"
         >
           + Add Drill
         </button>

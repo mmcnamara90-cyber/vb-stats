@@ -56,7 +56,7 @@ export function TryoutsScreen() {
                 onClick={() => setLevel(lvl)}
                 className={`min-h-11 px-3 rounded-lg text-sm font-medium border ${
                   session.level === lvl
-                    ? 'bg-blue-600 text-white border-blue-600'
+                    ? 'bg-brand-indigo text-white border-brand-indigo'
                     : 'bg-white text-gray-700 border-gray-300'
                 }`}
               >
@@ -80,7 +80,7 @@ export function TryoutsScreen() {
             onClick={() => setSubTab(t.id)}
             className={`min-h-11 px-4 rounded-lg text-base font-medium border ${
               subTab === t.id
-                ? 'bg-blue-600 text-white border-blue-600'
+                ? 'bg-brand-indigo text-white border-brand-indigo'
                 : 'bg-white text-gray-700 border-gray-300'
             }`}
           >

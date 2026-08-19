@@ -67,7 +67,7 @@ export function RosterScreen() {
           </button>
           <button
             onClick={openAddForm}
-            className="min-h-11 px-4 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700"
+            className="min-h-11 px-4 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark"
           >
             + Add Player
           </button>
@@ -79,7 +79,7 @@ export function RosterScreen() {
           onClick={() => setShowActiveOnly(true)}
           className={`min-h-11 px-4 rounded-lg text-base font-medium border ${
             showActiveOnly
-              ? 'bg-blue-600 text-white border-blue-600'
+              ? 'bg-brand-indigo text-white border-brand-indigo'
               : 'bg-white text-gray-700 border-gray-300'
           }`}
         >
@@ -89,7 +89,7 @@ export function RosterScreen() {
           onClick={() => setShowActiveOnly(false)}
           className={`min-h-11 px-4 rounded-lg text-base font-medium border ${
             !showActiveOnly
-              ? 'bg-blue-600 text-white border-blue-600'
+              ? 'bg-brand-indigo text-white border-brand-indigo'
               : 'bg-white text-gray-700 border-gray-300'
           }`}
         >

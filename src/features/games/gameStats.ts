@@ -1,11 +1,15 @@
-import type { GameStatEvent, GameStatType, Player, Position } from '../../types';
+import type { GameLineup, GameStatEvent, GameStatType, Player, Position } from '../../types';
+import { backRowSetterId, computeEffectiveCourt } from './effectiveCourt';
 
 // Which stat buttons a player's card shows, keyed off their tagged
 // position(s) — a player tagged e.g. both OH and DS_L gets the union of
 // both blocks (hitter buttons + serve receive), not a forced single role.
+// Assist is deliberately NOT role-gated here — every on-court player gets
+// that button (see LiveStatsTab), since a dig-and-set or a broken play can
+// come from anyone, not just the tagged Setter.
 export interface PlayerStatRoles {
   hitter: boolean; // OH / MB / OPP: attack attempt, kill, attack error, + serve receive
-  setter: boolean; // S: set attempt, assist (set that led to a kill)
+  setter: boolean; // S: also gets attack attempt/kill/error (setters attack too)
   passer: boolean; // DS_L: serve receive only
 }
 
@@ -23,7 +27,8 @@ export const GAME_STAT_LABELS: Record<GameStatType, string> = {
   attack_error: 'Error',
   serve_receive: 'Serve Receive',
   set_attempt: 'Set Attempt',
-  assist: 'Kill Off Set',
+  assist: 'Assist',
+  serve: 'Serve',
 };
 
 export function countEvents(events: GameStatEvent[], playerId: string, statType: GameStatType): number {
@@ -36,6 +41,12 @@ export function serveReceiveAverage(events: GameStatEvent[], playerId: string): 
   return taps.reduce((sum, e) => sum + (e.value ?? 0), 0) / taps.length;
 }
 
+export function serveAverage(events: GameStatEvent[], playerId: string): number | undefined {
+  const taps = events.filter((e) => e.playerId === playerId && e.statType === 'serve' && e.value != null);
+  if (taps.length === 0) return undefined;
+  return taps.reduce((sum, e) => sum + (e.value ?? 0), 0) / taps.length;
+}
+
 export interface PlayerGameStatLine {
   player: Player;
   attackAttempts: number;
@@ -44,9 +55,11 @@ export interface PlayerGameStatLine {
   hittingPct?: number; // (kills - errors) / attempts
   serveReceiveAvg?: number;
   serveReceiveCount: number;
-  setAttempts: number;
-  assists: number;
-  settingConversionPct?: number; // assists / setAttempts
+  serveAvg?: number;
+  serveCount: number;
+  setAttempts: number; // historical only — no UI writes this anymore
+  assists: number; // raw explicit Assist taps; see computeAssistCredits for the credit-adjusted total
+  settingConversionPct?: number; // assists / setAttempts — historical only
 }
 
 export function buildPlayerStatLine(player: Player, events: GameStatEvent[]): PlayerGameStatLine {
@@ -57,6 +70,7 @@ export function buildPlayerStatLine(player: Player, events: GameStatEvent[]): Pl
   const setAttempts = playerEvents.filter((e) => e.statType === 'set_attempt').length;
   const assists = playerEvents.filter((e) => e.statType === 'assist').length;
   const srTaps = playerEvents.filter((e) => e.statType === 'serve_receive' && e.value != null);
+  const serveTaps = playerEvents.filter((e) => e.statType === 'serve' && e.value != null);
 
   return {
     player,
@@ -66,10 +80,60 @@ export function buildPlayerStatLine(player: Player, events: GameStatEvent[]): Pl
     hittingPct: attackAttempts > 0 ? (kills - attackErrors) / attackAttempts : undefined,
     serveReceiveAvg: srTaps.length > 0 ? srTaps.reduce((s, e) => s + (e.value ?? 0), 0) / srTaps.length : undefined,
     serveReceiveCount: srTaps.length,
+    serveAvg: serveTaps.length > 0 ? serveTaps.reduce((s, e) => s + (e.value ?? 0), 0) / serveTaps.length : undefined,
+    serveCount: serveTaps.length,
     setAttempts,
     assists,
     settingConversionPct: setAttempts > 0 ? assists / setAttempts : undefined,
   };
+}
+
+// ===== Assist crediting =====
+// There's no per-rally linking in this data model (a Kill tap and an
+// Assist tap are independent rows), so "the back-row setter gets the
+// assist unless otherwise specified" is computed here rather than
+// requiring a tap for every single kill. For each (set, rotation) bucket:
+// explicit Assist taps always credit whoever they were tapped for; any
+// remaining kills beyond that (killCount - explicitAssistCount, when
+// positive) are credited to that rotation's sole back-row Setter, if one
+// is unambiguous. This means the common case (the on-court setter ran the
+// offense) needs zero extra taps, while a broken play someone else set
+// just needs one Assist tap on the right player to redirect credit.
+export function computeAssistCredits(
+  events: GameStatEvent[],
+  lineups: GameLineup[],
+  playersById: Map<string, Player>,
+): Map<string, number> {
+  const credits = new Map<string, number>();
+  const add = (id: string, n: number) => credits.set(id, (credits.get(id) ?? 0) + n);
+
+  for (const e of events) {
+    if (e.statType === 'assist') add(e.playerId, 1);
+  }
+
+  const bucketKeys = new Set<string>();
+  for (const e of events) {
+    if (e.statType === 'kill' && e.rotation != null) bucketKeys.add(`${e.setNumber}:${e.rotation}`);
+  }
+
+  for (const key of bucketKeys) {
+    const [setNumberStr, rotationStr] = key.split(':');
+    const setNumber = Number(setNumberStr);
+    const rotation = Number(rotationStr) as 1 | 2 | 3 | 4 | 5 | 6;
+    const killCount = events.filter((e) => e.statType === 'kill' && e.setNumber === setNumber && e.rotation === rotation).length;
+    const explicitAssistCount = events.filter(
+      (e) => e.statType === 'assist' && e.setNumber === setNumber && e.rotation === rotation,
+    ).length;
+    const gap = killCount - explicitAssistCount;
+    if (gap <= 0) continue;
+    const lineup = lineups.find((l) => l.setNumber === setNumber);
+    if (!lineup) continue;
+    const effective = computeEffectiveCourt(lineup, rotation);
+    const setterId = backRowSetterId(effective.zoneAssignments, playersById);
+    if (setterId) add(setterId, gap);
+  }
+
+  return credits;
 }
 
 export type InsightTone = 'good' | 'watch';
@@ -85,12 +149,11 @@ export interface Insight {
 // needs no API key/backend.
 const MIN_ATTACK_ATTEMPTS = 3;
 const MIN_SR_TAPS = 3;
-const MIN_SET_ATTEMPTS = 3;
+const MIN_ASSISTS_FOR_CALLOUT = 5;
 const GOOD_HITTING_PCT = 0.3;
 const WATCH_HITTING_PCT = 0;
 const GOOD_SR_AVG = 2.3;
 const WATCH_SR_AVG = 1.5;
-const GOOD_CONVERSION_PCT = 0.3;
 
 // ===== Rotation-level breakdowns =====
 // Every gameStatEvent carries `rotation` already (see LiveStatsTab), so
@@ -344,13 +407,11 @@ export function buildInsights(lines: PlayerGameStatLine[]): Insight[] {
         });
       }
     }
-    if (l.setAttempts >= MIN_SET_ATTEMPTS && l.settingConversionPct != null) {
-      if (l.settingConversionPct >= GOOD_CONVERSION_PCT) {
-        insights.push({
-          tone: 'good',
-          text: `${name(l)} is converting ${(l.settingConversionPct * 100).toFixed(0)}% of sets into kills (${l.assists}/${l.setAttempts}) — offense is running well through them.`,
-        });
-      }
+    if (l.assists >= MIN_ASSISTS_FOR_CALLOUT) {
+      insights.push({
+        tone: 'good',
+        text: `${name(l)} is running the offense — ${l.assists} assists (kills off their sets) so far.`,
+      });
     }
   }
 

@@ -36,7 +36,7 @@ function App() {
         <button
           onClick={() => setTab('roster')}
           className={`flex-1 min-h-11 text-base font-medium ${
-            tab === 'roster' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'
+            tab === 'roster' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
           }`}
         >
           Roster
@@ -44,7 +44,7 @@ function App() {
         <button
           onClick={() => setTab('tryouts')}
           className={`flex-1 min-h-11 text-base font-medium ${
-            tab === 'tryouts' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'
+            tab === 'tryouts' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
           }`}
         >
           Tryouts
@@ -52,7 +52,7 @@ function App() {
         <button
           onClick={() => setTab('roster_builder')}
           className={`flex-1 min-h-11 text-base font-medium ${
-            tab === 'roster_builder' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'
+            tab === 'roster_builder' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
           }`}
         >
           Roster Builder
@@ -60,7 +60,7 @@ function App() {
         <button
           onClick={() => setTab('game_day')}
           className={`flex-1 min-h-11 text-base font-medium ${
-            tab === 'game_day' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'
+            tab === 'game_day' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
           }`}
         >
           🏐 Game Day

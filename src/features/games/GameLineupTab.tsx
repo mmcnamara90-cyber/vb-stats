@@ -13,7 +13,7 @@ const ZONE_GRID: CourtZone[][] = [
 const ROTATIONS = [1, 2, 3, 4, 5, 6] as const;
 
 const selectClass =
-  'min-h-10 w-full rounded-lg border border-gray-300 px-2 text-sm focus:border-blue-500 focus:outline-none';
+  'min-h-10 w-full rounded-lg border border-gray-300 px-2 text-sm focus:border-brand-indigo focus:outline-none';
 
 function emptyLineup(gameId: string, setNumber: number): GameLineup {
   const now = new Date().toISOString();
@@ -167,7 +167,7 @@ export function GameLineupTab({ game }: { game: Game }) {
             type="button"
             onClick={() => { setSetNumber(n); setRotation(1); setSubTargetZone(null); }}
             className={`min-h-9 px-3 rounded-lg text-sm font-medium border ${
-              setNumber === n ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300'
+              setNumber === n ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
             }`}
           >
             {n}
@@ -185,7 +185,7 @@ export function GameLineupTab({ game }: { game: Game }) {
             type="button"
             onClick={() => { setRotation(r); setSubTargetZone(null); }}
             className={`min-h-9 px-3 rounded-lg text-sm font-medium border ${
-              rotation === r ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+              rotation === r ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
             }`}
           >
             Rotation {r}
@@ -245,7 +245,7 @@ export function GameLineupTab({ game }: { game: Game }) {
                             ? 'bg-blue-50 border-blue-200'
                             : 'bg-white border-gray-200'
                       : player
-                        ? 'bg-blue-100 border-blue-500'
+                        ? 'bg-blue-100 border-brand-indigo'
                         : selectedBenchPlayerId
                           ? 'bg-blue-50 border-blue-400 border-dashed cursor-pointer'
                           : 'bg-white border-gray-200'

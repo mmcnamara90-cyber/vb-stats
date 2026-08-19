@@ -78,7 +78,7 @@ export function RadarChart({
             <text x={labelPoint.x} y={labelPoint.y} className="fill-gray-500" fontSize={10}>
               {SHORT_AXIS_LABELS[axis]}
             </text>
-            <text x={labelPoint.x} y={labelPoint.y} dy={12} className="fill-blue-700 font-semibold" fontSize={10}>
+            <text x={labelPoint.x} y={labelPoint.y} dy={12} className="fill-brand-indigo-dark font-semibold" fontSize={10}>
               {value != null ? value.toFixed(1) : '–'}
             </text>
           </g>

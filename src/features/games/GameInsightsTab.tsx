@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
-import type { Game, GameStatEvent, Player } from '../../types';
+import type { Game, GameLineup, GameStatEvent, Player } from '../../types';
 import { PositionBadges } from '../tryouts/PositionBadges';
 import {
   buildInsights,
@@ -9,8 +9,8 @@ import {
   buildRotationInsights,
   buildRotationOffenseLines,
   buildRotationServeReceiveLines,
+  computeAssistCredits,
   describePlayerTrend,
-  statRolesForPositions,
   type PlayerGameStatLine,
 } from './gameStats';
 
@@ -19,18 +19,33 @@ export function GameInsightsTab({ game }: { game: Game }) {
     const { data } = await supabase.from('players').select('*').eq('active', true);
     return (data as Player[]) ?? [];
   }, []);
+  const lineups = useLiveQuery(async () => {
+    const { data } = await supabase.from('gameLineups').select('*').eq('gameId', game.id);
+    return (data as GameLineup[]) ?? [];
+  }, [game.id]);
   const events = useLiveQuery(async () => {
     const { data } = await supabase.from('gameStatEvents').select('*').eq('gameId', game.id);
     return (data as GameStatEvent[]) ?? [];
   }, [game.id]);
 
-  if (players === undefined || events === undefined) return <p className="text-gray-500">Loading…</p>;
+  if (players === undefined || lineups === undefined || events === undefined) {
+    return <p className="text-gray-500">Loading…</p>;
+  }
 
   const playersById = new Map(players.map((p) => [p.id, p]));
   const rosterPlayers = game.rosterPlayerIds.map((id) => playersById.get(id)).filter((p): p is Player => !!p);
+
+  // Assist credit: explicit taps plus, for kills nobody explicitly claimed,
+  // an inferred credit to that rotation's sole back-row Setter — see
+  // computeAssistCredits in gameStats.ts. Overrides the raw explicit-only
+  // count buildPlayerStatLine returns.
+  const assistCredits = computeAssistCredits(events, lineups, playersById);
+
   const lines: PlayerGameStatLine[] = rosterPlayers
-    .map((p) => buildPlayerStatLine(p, events))
-    .filter((l) => l.attackAttempts + l.serveReceiveCount + l.setAttempts + l.assists > 0)
+    .map((p) => ({ ...buildPlayerStatLine(p, events), assists: assistCredits.get(p.id) ?? 0 }))
+    .filter(
+      (l) => l.attackAttempts + l.kills + l.attackErrors + l.serveReceiveCount + l.serveCount + l.assists > 0,
+    )
     .sort((a, b) => a.player.firstName.localeCompare(b.player.firstName));
 
   const insights = buildInsights(lines);
@@ -52,7 +67,8 @@ export function GameInsightsTab({ game }: { game: Game }) {
     <div>
       <p className="text-xs text-gray-500 mb-4">
         Computed automatically from what you've tapped in — not AI-generated. Flags need a few reps first (3+
-        attempts/passes) so single plays don't skew the read.
+        attempts/passes) so single plays don't skew the read. Assists include kills nobody explicitly tapped an
+        Assist for, credited to that rotation's back-row setter by default.
       </p>
 
       {good.length > 0 && (
@@ -155,38 +171,35 @@ export function GameInsightsTab({ game }: { game: Game }) {
       <div className="rounded-lg border border-gray-200 overflow-hidden">
         <div className="px-3 py-2 bg-gray-50 font-semibold text-gray-900 text-sm">Box score (all sets)</div>
         <ul className="divide-y divide-gray-100">
-          {lines.map((l) => {
-            const roles = statRolesForPositions(l.player.positions);
-            return (
-              <li key={l.player.id} className="px-3 py-2">
-                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                  <span className="font-medium text-gray-900 text-sm">
-                    {l.player.firstName} {l.player.lastName}
+          {lines.map((l) => (
+            <li key={l.player.id} className="px-3 py-2">
+              <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                <span className="font-medium text-gray-900 text-sm">
+                  {l.player.firstName} {l.player.lastName}
+                </span>
+                <PositionBadges positions={l.player.positions} />
+              </div>
+              <div className="flex gap-3 flex-wrap text-xs text-gray-600">
+                {(l.attackAttempts > 0 || l.kills > 0 || l.attackErrors > 0) && (
+                  <span>
+                    {l.kills}k / {l.attackErrors}e / {l.attackAttempts} att
+                    {l.hittingPct != null && ` (${(l.hittingPct * 100).toFixed(0)}%)`}
                   </span>
-                  <PositionBadges positions={l.player.positions} />
-                </div>
-                <div className="flex gap-3 flex-wrap text-xs text-gray-600">
-                  {roles.hitter && (
-                    <span>
-                      {l.kills}k / {l.attackErrors}e / {l.attackAttempts} att
-                      {l.hittingPct != null && ` (${(l.hittingPct * 100).toFixed(0)}%)`}
-                    </span>
-                  )}
-                  {roles.setter && (
-                    <span>
-                      {l.assists} kills off {l.setAttempts} sets
-                      {l.settingConversionPct != null && ` (${(l.settingConversionPct * 100).toFixed(0)}%)`}
-                    </span>
-                  )}
-                  {(roles.hitter || roles.passer) && l.serveReceiveCount > 0 && (
-                    <span>
-                      SR {l.serveReceiveAvg?.toFixed(1)} avg ({l.serveReceiveCount})
-                    </span>
-                  )}
-                </div>
-              </li>
-            );
-          })}
+                )}
+                {l.assists > 0 && <span>{l.assists} assists</span>}
+                {l.serveReceiveCount > 0 && (
+                  <span>
+                    SR {l.serveReceiveAvg?.toFixed(1)} avg ({l.serveReceiveCount})
+                  </span>
+                )}
+                {l.serveCount > 0 && (
+                  <span>
+                    Serve {l.serveAvg?.toFixed(1)} avg ({l.serveCount})
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
           {lines.length === 0 && <li className="px-3 py-2 text-sm text-gray-400">No stats yet.</li>}
         </ul>
       </div>

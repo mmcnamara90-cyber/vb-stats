@@ -117,7 +117,7 @@ export function ImportRosterModal({ onClose }: { onClose: () => void }) {
                   <li key={i} className="px-4 py-2 text-sm flex items-center justify-between gap-2">
                     <span className="font-medium text-gray-900">
                       {row.firstName} {row.lastName}
-                      {!isNew && <span className="text-xs text-blue-600 ml-1">(update)</span>}
+                      {!isNew && <span className="text-xs text-brand-indigo ml-1">(update)</span>}
                       {!row.registered && <span className="text-xs text-amber-600 ml-1">(not registered)</span>}
                     </span>
                     <span className="text-gray-500 text-xs text-right">
@@ -145,7 +145,7 @@ export function ImportRosterModal({ onClose }: { onClose: () => void }) {
               type="button"
               onClick={handleImport}
               disabled={!plan || importing || plan.toCreate.length + plan.toUpdate.length === 0}
-              className="min-h-11 flex-1 rounded-lg bg-blue-600 text-base font-medium text-white active:bg-blue-700 disabled:opacity-50"
+              className="min-h-11 flex-1 rounded-lg bg-brand-indigo text-base font-medium text-white active:bg-brand-indigo-dark disabled:opacity-50"
             >
               {importing ? 'Importing…' : 'Import'}
             </button>

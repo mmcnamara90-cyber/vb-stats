@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+/* Brand palette — see CLAUDE.md for the source swatch. Used for
+   primary/selected/active UI (nav, buttons, selected pills); deliberately
+   NOT applied to the Game Day Live tab's stat-quality color coding
+   (kill/error/serve-receive greens/reds/ambers), which is tuned for fast
+   scanning during live play, not branding. */
+@theme {
+  --color-brand-indigo: #222e50;
+  --color-brand-indigo-dark: #19233d;
+  --color-brand-lime: #e0ff4f;
+  --color-brand-cyan: #9cfffa;
+  --color-brand-rose: #ff70a6;
+  --color-brand-tomato: #f55d3e;
+}

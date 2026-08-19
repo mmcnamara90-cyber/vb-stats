@@ -41,7 +41,7 @@ function cascadeEligiblePlayers(
 }
 
 const inputClass =
-  'min-h-9 w-14 rounded border border-gray-300 px-1 text-center text-sm focus:border-blue-500 focus:outline-none';
+  'min-h-9 w-14 rounded border border-gray-300 px-1 text-center text-sm focus:border-brand-indigo focus:outline-none';
 
 // Position rows are seeded on demand with deterministic ids (`${team}:${position}`)
 // so re-running this is naturally idempotent and never clobbers a coach's edits.
@@ -282,7 +282,7 @@ function AvailablePlayersWidget({
     <div className="rounded-lg border border-gray-200 overflow-hidden mb-4">
       <div className="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50">
         <span className="font-semibold text-gray-900">Available Players</span>
-        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-brand-indigo-dark">
           {availableCount} available
         </span>
       </div>
@@ -338,7 +338,7 @@ function AvailablePlayersWidget({
                   className={`min-h-9 px-2 rounded-lg border text-xs font-medium ${
                     greyed
                       ? 'border-gray-200 text-gray-300 cursor-not-allowed'
-                      : 'border-blue-300 bg-blue-50 text-blue-700'
+                      : 'border-blue-300 bg-blue-50 text-brand-indigo-dark'
                   }`}
                 >
                   + {POSITION_SHORT_LABELS[pos]}
@@ -506,7 +506,7 @@ function PositionCard({
               type="button"
               onClick={() => pushDown(candidate)}
               title={`Move to ${TEAM_LABELS[lowerTeam]} (${POSITION_LABELS[position]}), considering`}
-              className="min-h-9 px-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-xs font-medium"
+              className="min-h-9 px-2 rounded-lg border border-blue-300 bg-blue-50 text-brand-indigo-dark text-xs font-medium"
             >
               ↓ {TEAM_LABELS[lowerTeam]}
             </button>
@@ -589,7 +589,7 @@ function PositionCard({
         <button
           type="button"
           onClick={() => setShowAdd(true)}
-          className="min-h-9 px-3 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-xs font-medium"
+          className="min-h-9 px-3 rounded-lg border border-blue-300 bg-blue-50 text-brand-indigo-dark text-xs font-medium"
         >
           + Add candidate
         </button>
@@ -671,7 +671,7 @@ function ComparePlayersPickerModal({
                 >
                   <span
                     className={`h-5 w-5 rounded border flex items-center justify-center shrink-0 text-xs ${
-                      checked ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300'
+                      checked ? 'bg-brand-indigo border-brand-indigo text-white' : 'border-gray-300'
                     }`}
                   >
                     {checked ? '✓' : ''}
@@ -706,7 +706,7 @@ function ComparePlayersPickerModal({
             type="button"
             onClick={() => onConfirm([...selected])}
             disabled={selected.size < 2}
-            className="min-h-11 flex-1 rounded-lg bg-blue-600 text-base font-medium text-white active:bg-blue-700 disabled:opacity-50"
+            className="min-h-11 flex-1 rounded-lg bg-brand-indigo text-base font-medium text-white active:bg-brand-indigo-dark disabled:opacity-50"
           >
             Compare {selected.size || ''}
           </button>
@@ -801,7 +801,7 @@ function AddCandidatesModal({
                 >
                   <span
                     className={`h-5 w-5 rounded border flex items-center justify-center shrink-0 text-xs ${
-                      checked ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300'
+                      checked ? 'bg-brand-indigo border-brand-indigo text-white' : 'border-gray-300'
                     }`}
                   >
                     {checked ? '✓' : ''}
@@ -840,7 +840,7 @@ function AddCandidatesModal({
             type="button"
             onClick={handleAdd}
             disabled={selected.size === 0}
-            className="min-h-11 flex-1 rounded-lg bg-blue-600 text-base font-medium text-white active:bg-blue-700 disabled:opacity-50"
+            className="min-h-11 flex-1 rounded-lg bg-brand-indigo text-base font-medium text-white active:bg-brand-indigo-dark disabled:opacity-50"
           >
             Add
           </button>

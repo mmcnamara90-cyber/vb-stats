@@ -79,7 +79,7 @@ export function RankingsTab() {
         <button
           type="button"
           onClick={() => toggleSort(sortKeyValue)}
-          className={`min-h-9 px-1 font-medium ${active ? 'text-blue-600' : 'text-gray-500'}`}
+          className={`min-h-9 px-1 font-medium ${active ? 'text-brand-indigo' : 'text-gray-500'}`}
         >
           {label}
           {active && <span className="ml-0.5">{sortDir === 'asc' ? '▲' : '▼'}</span>}
@@ -104,7 +104,7 @@ export function RankingsTab() {
               <button
                 type="button"
                 onClick={() => toggleSort('name')}
-                className={`min-h-9 px-1 font-medium ${sortKey === 'name' ? 'text-blue-600' : 'text-gray-500'}`}
+                className={`min-h-9 px-1 font-medium ${sortKey === 'name' ? 'text-brand-indigo' : 'text-gray-500'}`}
               >
                 Player
                 {sortKey === 'name' && <span className="ml-0.5">{sortDir === 'asc' ? '▲' : '▼'}</span>}

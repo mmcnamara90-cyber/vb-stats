@@ -49,7 +49,7 @@ export function GroupsTab() {
         <p className="text-sm text-gray-500">Reusable player sets for building drill rosters.</p>
         <button
           onClick={openAdd}
-          className="min-h-11 px-4 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700"
+          className="min-h-11 px-4 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark"
         >
           + Add Group
         </button>

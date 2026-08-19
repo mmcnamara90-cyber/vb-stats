@@ -53,7 +53,7 @@ export function GameDetailScreen({ gameId, onBack }: { gameId: string; onBack: (
             type="button"
             onClick={() => setTab(t.key)}
             className={`flex-1 min-h-11 text-sm font-medium ${
-              tab === t.key ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'
+              tab === t.key ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
             }`}
           >
             {t.label}

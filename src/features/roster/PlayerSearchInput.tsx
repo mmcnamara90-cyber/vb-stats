@@ -13,7 +13,7 @@ export function PlayerSearchInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder="Search name, grade, or position…"
-      className={`min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-blue-500 focus:outline-none ${className}`}
+      className={`min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-brand-indigo focus:outline-none ${className}`}
     />
   );
 }

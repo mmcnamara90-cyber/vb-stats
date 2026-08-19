@@ -6,7 +6,7 @@ import { TEAM_LABELS, TEAMS } from '../tryouts/teams';
 import { GameDetailScreen } from './GameDetailScreen';
 
 const inputClass =
-  'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-blue-500 focus:outline-none';
+  'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-brand-indigo focus:outline-none';
 
 export function GameDayScreen({ initialTeam }: { initialTeam?: Team }) {
   const [team, setTeam] = useState<Team>(initialTeam ?? 'jv');
@@ -33,7 +33,7 @@ export function GameDayScreen({ initialTeam }: { initialTeam?: Team }) {
             type="button"
             onClick={() => setTeam(t)}
             className={`min-h-11 px-4 rounded-lg text-sm font-medium border ${
-              team === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+              team === t ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
             }`}
           >
             {TEAM_LABELS[t]}
@@ -47,7 +47,7 @@ export function GameDayScreen({ initialTeam }: { initialTeam?: Team }) {
         <button
           type="button"
           onClick={() => setShowNewGame(true)}
-          className="min-h-11 w-full mb-4 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700"
+          className="min-h-11 w-full mb-4 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark"
         >
           + New Game
         </button>
@@ -123,7 +123,7 @@ function NewGameForm({ team, onDone, onCancel }: { team: Team; onDone: (gameId: 
           type="button"
           onClick={create}
           disabled={!opponent.trim() || saving}
-          className="min-h-11 flex-1 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700 disabled:opacity-50"
+          className="min-h-11 flex-1 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark disabled:opacity-50"
         >
           {saving ? 'Creating…' : 'Create Game'}
         </button>

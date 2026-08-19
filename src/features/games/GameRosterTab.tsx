@@ -79,12 +79,12 @@ export function GameRosterTab({ game }: { game: Game }) {
                         </span>
                         <span className="text-xs text-gray-500 ml-1">{playerGradeLabel(p)}</span>
                         {teams.length > 0 && (
-                          <span className="text-xs text-blue-600 ml-1">
+                          <span className="text-xs text-brand-indigo ml-1">
                             ({teams.map((t) => TEAM_LABELS[t as keyof typeof TEAM_LABELS] ?? t).join(', ')})
                           </span>
                         )}
                       </span>
-                      <span className="text-blue-600 text-sm font-medium shrink-0">+ Add</span>
+                      <span className="text-brand-indigo text-sm font-medium shrink-0">+ Add</span>
                     </button>
                   </li>
                 );
@@ -103,7 +103,7 @@ export function GameRosterTab({ game }: { game: Game }) {
         <button
           type="button"
           onClick={() => setShowAdd(true)}
-          className="min-h-11 w-full mb-4 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-sm font-medium"
+          className="min-h-11 w-full mb-4 rounded-lg border border-blue-300 bg-blue-50 text-brand-indigo-dark text-sm font-medium"
         >
           + Add a player (e.g. Varsity call-up)
         </button>
@@ -127,7 +127,7 @@ export function GameRosterTab({ game }: { game: Game }) {
                   <span className="text-xs text-gray-500">{playerGradeLabel(p)}</span>
                   <PositionBadges positions={p.positions} />
                   {isCallUp && (
-                    <span className="px-1.5 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">
+                    <span className="px-1.5 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-brand-indigo-dark">
                       Call-up{teams[0] ? ` · ${TEAM_LABELS[teams[0] as keyof typeof TEAM_LABELS] ?? teams[0]}` : ''}
                     </span>
                   )}

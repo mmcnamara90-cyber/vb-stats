@@ -5,6 +5,25 @@ Vite + Tailwind, deployed as a static site on GitHub Pages, backed by a shared
 Supabase Postgres database (not local-only storage — every device reads/writes
 the same data).
 
+## Brand palette
+
+Defined as Tailwind v4 `@theme` tokens in `src/index.css` (no `tailwind.config` —
+this project uses CSS-based Tailwind v4 config): `brand-indigo` (#222e50),
+`brand-indigo-dark` (#19233d, hover/active shade), `brand-lime` (#e0ff4f),
+`brand-cyan` (#9cfffa), `brand-rose` (#ff70a6), `brand-tomato` (#f55d3e).
+`brand-indigo` replaced the old `blue-600`/`blue-700`/`blue-500` and the
+`bg-gray-900` "selected pill" pattern everywhere across the app (nav active
+tab, primary buttons, selected pills/rotation-set selectors) — one unified
+primary color instead of two different ones. The lighter tint classes
+(`blue-50` through `blue-400`, used for hover/selected-cell backgrounds in
+Roster Builder, the Lineup Simulator, GameLineupTab, etc.) were deliberately
+**left alone** — that's a much larger, lower-value surface to touch and lower
+risk to leave as-is. The other four palette colors are used sparingly as
+accents (e.g. the login screen's title underline stripe) — **not** applied to
+the Game Day Live tab's stat-quality color coding (kill/error green/red, the
+serve-receive/serve 0-3 gradient, amber warnings), which is tuned for fast
+scanning during live play and is a functional/semantic system, not branding.
+
 ## Deployment
 
 - **Repo**: https://github.com/mmcnamara90-cyber/vb-stats (branch `main`)
@@ -324,34 +343,60 @@ sub-tabs) once a game is selected.
   `LiveStatsTab.tsx`. Each player's stat buttons are otherwise driven by
   `statRolesForPositions()` (`gameStats.ts`) off their tagged `Position`s,
   unioned if a player has more than one:
-  - Hitter (OH/MB/OPP): Attempt / Kill / Error + serve receive 0-3 rating.
+  - Hitter (OH/MB/OPP) **or Setter** (S): Attempt / Kill / Error + serve
+    receive 0-3 rating. Setters get full attack options now (they attack
+    too, e.g. a setter dump) — there's no separate "Set Attempt" button
+    anymore (see Assist below). `set_attempt` still exists as a
+    `GameStatType` and DB value purely so old games' data reads back
+    correctly; no UI writes it anymore.
   - Passer (DS_L): serve receive 0-3 rating only.
-  - Setter (S): Set Attempt / "Kill Off Set" (i.e. assist — a set that
-    converted to a kill).
-  Every tap inserts a `gameStatEvent` row (serve receive stores its 0-3 as
-  `value`, like `SkillScore` taps); a one-tap "Undo last" button above the
-  roster undoes the single most recent tap (names what it'll undo before
-  you commit), and a "Recent" log below with per-row tap-to-undo (hard
-  delete) handles corrections further back — hidden in mobile view along
-  with the sub/libero banner, to keep that view pared down. Stat counts
-  shown per player are cumulative for the whole set, not just the current
-  rotation — `rotation` is stored on each event for later analysis, not
-  used to filter the tally.
+  - **Assist — every on-court player, not role-gated.** A kill's assist
+    is *assumed*, not tapped, by default: `computeAssistCredits()`
+    (`gameStats.ts`) credits any kill in a (set, rotation) bucket that
+    nobody explicitly tapped Assist for to that rotation's sole back-row
+    Setter (`backRowSetterId()` in `effectiveCourt.ts` — only fires when
+    exactly one Setter is back row; otherwise no default, coach must tap
+    explicitly). The Assist button is for the override case — a dig-and-set,
+    a broken play, a non-setter covering — tap the player who actually set
+    it and that kill's credit goes to them instead of the default. This
+    means the live tap flow needs zero extra taps for the common case
+    (the on-court setter ran the offense) and one tap to redirect credit
+    when it wasn't them. `assist` `gameStatEvent` rows only exist for
+    explicit taps — the default case is computed at read time (Insights,
+    box score), never written.
+  - **Serve** — a 0-3 quality rating (`ServeScoreBar` in `LiveStatsTab.tsx`,
+    same red→green convention as serve receive) shown as its own bar at
+    the top of the tracking area, above the player cards. Tied to whoever
+    occupies Zone 1 (the server) in the *effective* court for the current
+    rotation — the coach doesn't pick who's serving, rotation determines
+    it. Hidden if Zone 1 is empty (lineup not fully set for this rotation).
+  Every tap inserts a `gameStatEvent` row (serve/serve receive store their
+  0-3 as `value`, like `SkillScore` taps); a one-tap "Undo last" button
+  above the roster undoes the single most recent tap (names what it'll
+  undo before you commit), and a "Recent" log below with per-row tap-to-undo
+  (hard delete) handles corrections further back — hidden in mobile view
+  along with the sub/libero banner, to keep that view pared down. Stat
+  counts shown per player are cumulative for the whole set, not just the
+  current rotation — `rotation` is stored on each event for later
+  analysis, not used to filter the tally.
   - **Two layouts, one component**: `LiveStatsTab.tsx` renders either a
     **desktop/iPad layout** (assumes a bigger screen, no toggle needed) —
     on-court cards in a `grid-cols-2` two-column grid so all 6 fit without
-    scrolling, each card's serve-receive 0-3 buttons arranged as a 2x2
-    square (0/1 over 2/3) pinned to the card's left edge, attack/setter
-    buttons stacked to its right — or a **mobile layout**, toggled on with
-    the "📱 Mobile view" button (state persisted in `localStorage`, keys
-    `vb-stats-mobile-view`/`vb-stats-mobile-category`, so it survives a
-    phone reload mid-game). Mobile view picks one of three categories
-    (Attack / Serve Receive / Setting, default Serve Receive since that's
-    the most common one-handed live-tracking use case) and shows only the
-    on-court players that category applies to, one per row, with large
-    (`min-h-14`+) touch targets — everyone else and every other stat block
-    is hidden. Both layouts share the same `StatButton`/`SR_RATING_COLOR_CLASSES`
-    building blocks (`StatButton` takes a `large` prop for the mobile size).
+    scrolling, each card laid out left→right as: serve-receive 0-3 buttons
+    as a 2x2 square (0/1 over 2/3) pinned to the card's left edge → one
+    Assist button in the middle → Attempt/Kill/Error stacked vertically
+    (wider than the SR square) on the right — or a **mobile layout**,
+    toggled on with the "📱 Mobile view" button (state persisted in
+    `localStorage`, keys `vb-stats-mobile-view`/`vb-stats-mobile-category`,
+    so it survives a phone reload mid-game). Mobile view picks one of
+    three categories (Serve Receive / Attack / Assist, default Serve
+    Receive since that's the most common one-handed live-tracking use
+    case) and shows only the on-court players that category applies to
+    (Assist: everyone), one per row, with large (`min-h-14`+) touch
+    targets — everyone else and every other stat block is hidden. Both
+    layouts share the same `StatButton`/`SR_RATING_COLOR_CLASSES` building
+    blocks (`StatButton` takes a `large` prop for mobile size, `stack` for
+    the desktop vertical Attempt/Kill/Error column).
   - **Gotcha already hit once, worth knowing**: `effectiveCourt.ts`
     deliberately never does `Object.keys(zoneMap) as CourtZone[]` — a
     zone map's keys come back as strings ("5") even though `CourtZone` is
@@ -361,18 +406,26 @@ sub-tabs) once a game is selected.
     JS coerces numeric-vs-string keys on property *access*, just not on
     equality checks). Don't reintroduce the `Object.keys` pattern here.
 - **Insights tab**: computed client-side from `gameStatEvents`, all in
-  `gameStats.ts` — no AI/LLM call, documented in-app as computed. Four
-  sections, in order:
+  `gameStats.ts` — no AI/LLM call, documented in-app as computed. Also
+  loads `gameLineups` now (needed for `computeAssistCredits`'s
+  back-row-setter lookup). Four sections, in order:
   - ✅/👀 Per-player working-well/worth-a-look flags: `buildPlayerStatLine`/
     `buildInsights` — hitting % ((kills−errors)/attempts), serve-receive
-    average, setting conversion % (assists/set attempts), threshold-based.
+    average, assist volume (credit-adjusted, not raw taps), threshold-based.
+    `PlayerGameStatLine.assists` from `buildPlayerStatLine` alone is the
+    *raw explicit-tap* count — callers that want the credit-adjusted total
+    (GameInsightsTab does) must override it with `computeAssistCredits()`'s
+    result, matching by player id.
   - 📈 Trending: `buildPlayerTrends`/`describePlayerTrend` — splits each
     player's *own* chronological taps (by `createdAt`) in half and compares
-    early vs. late on whichever metric applies to their role (hitting/SR/
-    setting conversion), flagging rising/falling past a fixed delta
-    threshold. This is a **within-game** trend only (first half of tonight's
-    taps vs. second half) — there's no cross-game history plumbed into this
-    tab, so don't read it as a multi-game trajectory.
+    early vs. late on whichever metric applies to their role (hitting/SR),
+    flagging rising/falling past a fixed delta threshold. This is a
+    **within-game** trend only (first half of tonight's taps vs. second
+    half) — there's no cross-game history plumbed into this tab, so don't
+    read it as a multi-game trajectory. (The old `setting` trend metric —
+    set_attempt/assist ratio — still exists in code but won't fire for new
+    games since nothing writes `set_attempt` anymore; harmless dead path,
+    not removed since it'd still work if that data ever existed.)
   - 🔁 By rotation + a full 6-row breakdown table: `buildRotationOffenseLines`/
     `buildRotationServeReceiveLines`/`buildRotationInsights` — groups the
     same taps by the `rotation` field already stored on every
@@ -385,7 +438,11 @@ sub-tabs) once a game is selected.
     point-scoring rate off a scoreboard. Worth being explicit about this
     with the coach if it ever comes up — flagged here so it isn't
     mistaken for real point-differential-by-rotation.
-  - Box score (unchanged from before).
+  - Box score: shows a hitting line whenever attempts/kills/errors > 0
+    (not gated by tagged position — a kill tapped with no matching
+    Attempt still shows), an assists line (credit-adjusted) whenever > 0,
+    SR and Serve average lines whenever their counts are > 0. Nothing here
+    is role-gated anymore, since setters attack and anyone can assist.
   Real LLM-generated insights would need a Supabase Edge Function +
   Anthropic API key (secret can't live in this static site) — a possible
   future upgrade, not built yet; everything above is rule-based.

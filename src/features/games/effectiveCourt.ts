@@ -1,4 +1,4 @@
-import type { CourtZone, GameLineup, LiberoAssignment } from '../../types';
+import type { CourtZone, GameLineup, LiberoAssignment, Player } from '../../types';
 import { zoneAssignmentsForRotation } from '../tryouts/lineupRotation';
 
 // Fixed zone list to iterate over — deliberately not Object.keys() on a zone
@@ -8,7 +8,7 @@ import { zoneAssignmentsForRotation } from '../tryouts/lineupRotation';
 // indexing into the map (JS coerces numeric-vs-string keys on property
 // access) sidesteps that trap everywhere below.
 const ALL_ZONES: CourtZone[] = [1, 2, 3, 4, 5, 6];
-const BACK_ROW_ZONES: CourtZone[] = [1, 5, 6];
+export const BACK_ROW_ZONES: CourtZone[] = [1, 5, 6];
 const ALL_ROTATIONS = [1, 2, 3, 4, 5, 6] as const;
 type Rotation = (typeof ALL_ROTATIONS)[number];
 
@@ -122,4 +122,20 @@ export function liberoRotationPlan(
     }
     return [];
   });
+}
+
+// Which on-court player is "the" back-row setter this rotation — the
+// default assumption for who set a hitter's swing when the coach hasn't
+// explicitly tapped someone else's Assist button (see gameStats.ts
+// computeAssistCredits). Only returns a player when exactly one Setter is
+// back row; if none or more than one qualify, there's no safe default and
+// the coach must attribute assists explicitly for that rotation.
+export function backRowSetterId(
+  effectiveZones: Partial<Record<CourtZone, string>>,
+  playersById: Map<string, Player>,
+): string | undefined {
+  const candidates = BACK_ROW_ZONES.map((z) => effectiveZones[z])
+    .filter((id): id is string => !!id)
+    .filter((id) => playersById.get(id)?.positions.includes('S'));
+  return candidates.length === 1 ? candidates[0] : undefined;
 }

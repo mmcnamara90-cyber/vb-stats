@@ -55,7 +55,7 @@ export function GroupForm({
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Group name</label>
           <input
-            className="min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-blue-500 focus:outline-none"
+            className="min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-brand-indigo focus:outline-none"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Juniors, Back Row Candidates, ..."
@@ -84,7 +84,7 @@ export function GroupForm({
                   >
                     <span
                       className={`h-5 w-5 rounded border flex items-center justify-center shrink-0 text-xs ${
-                        checked ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300'
+                        checked ? 'bg-brand-indigo border-brand-indigo text-white' : 'border-gray-300'
                       }`}
                     >
                       {checked ? '✓' : ''}
@@ -116,7 +116,7 @@ export function GroupForm({
           </button>
           <button
             type="submit"
-            className="min-h-11 flex-1 rounded-lg bg-blue-600 text-base font-medium text-white active:bg-blue-700"
+            className="min-h-11 flex-1 rounded-lg bg-brand-indigo text-base font-medium text-white active:bg-brand-indigo-dark"
           >
             Save
           </button>

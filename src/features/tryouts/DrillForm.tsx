@@ -17,7 +17,7 @@ function toFormValues(drill?: TryoutDrill): DrillFormValues {
 }
 
 const inputClass =
-  'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-blue-500 focus:outline-none';
+  'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-brand-indigo focus:outline-none';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
 
 export function DrillForm({
@@ -79,7 +79,7 @@ export function DrillForm({
         <div className="mb-5">
           <label className={labelClass}>Description (optional)</label>
           <textarea
-            className="w-full min-h-20 rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none"
+            className="w-full min-h-20 rounded-lg border border-gray-300 px-3 py-2 text-base focus:border-brand-indigo focus:outline-none"
             value={values.description}
             onChange={(e) => update('description', e.target.value)}
           />
@@ -95,7 +95,7 @@ export function DrillForm({
           </button>
           <button
             type="submit"
-            className="min-h-11 flex-1 rounded-lg bg-blue-600 text-base font-medium text-white active:bg-blue-700"
+            className="min-h-11 flex-1 rounded-lg bg-brand-indigo text-base font-medium text-white active:bg-brand-indigo-dark"
           >
             Save
           </button>

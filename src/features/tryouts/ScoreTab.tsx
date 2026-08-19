@@ -20,7 +20,7 @@ import { PlayerSearchInput } from '../roster/PlayerSearchInput';
 
 const checkboxClass = (checked: boolean) =>
   `h-5 w-5 rounded border flex items-center justify-center shrink-0 text-xs ${
-    checked ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300'
+    checked ? 'bg-brand-indigo border-brand-indigo text-white' : 'border-gray-300'
   }`;
 
 export function ScoreTab({ session }: { session: Session | undefined }) {
@@ -136,7 +136,7 @@ function StartDrillForm({
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-1">Drill</label>
         <select
-          className="min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-blue-500 focus:outline-none"
+          className="min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-brand-indigo focus:outline-none"
           value={drillId}
           onChange={(e) => setDrillId(e.target.value)}
         >
@@ -159,7 +159,7 @@ function StartDrillForm({
             <button
               type="button"
               onClick={() => setSelected(new Set())}
-              className="min-h-11 px-2 text-sm text-blue-600 font-medium"
+              className="min-h-11 px-2 text-sm text-brand-indigo font-medium"
             >
               Clear
             </button>
@@ -173,7 +173,7 @@ function StartDrillForm({
                 key={g.id}
                 type="button"
                 onClick={() => selectByGroup(g)}
-                className="min-h-11 px-3 rounded-full border border-blue-300 bg-blue-50 text-blue-700 text-sm font-medium"
+                className="min-h-11 px-3 rounded-full border border-blue-300 bg-blue-50 text-brand-indigo-dark text-sm font-medium"
               >
                 + {g.name}
               </button>
@@ -252,7 +252,7 @@ function StartDrillForm({
         type="button"
         onClick={startDrill}
         disabled={!session || !drillId || selected.size === 0}
-        className="min-h-11 w-full rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700 disabled:opacity-50"
+        className="min-h-11 w-full rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark disabled:opacity-50"
       >
         Start Drill
       </button>
@@ -457,7 +457,7 @@ function ActiveDrillRun({
                     key={n}
                     type="button"
                     onClick={() => addTap(player.id, n)}
-                    className="min-h-12 sm:min-h-14 rounded-xl text-2xl font-bold border-2 bg-white text-gray-700 border-gray-300 active:bg-blue-600 active:text-white active:border-blue-600"
+                    className="min-h-12 sm:min-h-14 rounded-xl text-2xl font-bold border-2 bg-white text-gray-700 border-gray-300 active:bg-brand-indigo active:text-white active:border-brand-indigo"
                   >
                     {n}
                   </button>

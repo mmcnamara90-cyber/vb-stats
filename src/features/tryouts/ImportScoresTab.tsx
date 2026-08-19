@@ -20,7 +20,7 @@ import {
 type Step = 'upload' | 'session' | 'map' | 'validate' | 'done';
 
 const inputClass =
-  'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-blue-500 focus:outline-none';
+  'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-brand-indigo focus:outline-none';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
 const NEW_DRILL_SENTINEL = '__new_drill__';
 const IGNORE_SENTINEL = '__ignore__';
@@ -264,7 +264,7 @@ export function ImportScoresTab() {
             <button
               type="button"
               onClick={() => setStep('session')}
-              className="min-h-11 w-full mt-4 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700"
+              className="min-h-11 w-full mt-4 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark"
             >
               Continue ({records.length} rows found)
             </button>
@@ -292,7 +292,7 @@ export function ImportScoresTab() {
                   type="button"
                   onClick={() => setLevel(lvl)}
                   className={`min-h-11 px-3 rounded-lg text-sm font-medium border ${
-                    level === lvl ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                    level === lvl ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
                   }`}
                 >
                   {TRYOUT_LEVEL_LABELS[lvl]}
@@ -311,7 +311,7 @@ export function ImportScoresTab() {
             <button
               type="button"
               onClick={handleSessionContinue}
-              className="min-h-11 flex-1 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700"
+              className="min-h-11 flex-1 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark"
             >
               Continue
             </button>
@@ -433,7 +433,7 @@ export function ImportScoresTab() {
               type="button"
               onClick={handleMapContinue}
               disabled={activeColumnMappings.length === 0}
-              className="min-h-11 flex-1 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700 disabled:opacity-50"
+              className="min-h-11 flex-1 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark disabled:opacity-50"
             >
               Continue
             </button>
@@ -523,7 +523,7 @@ export function ImportScoresTab() {
               type="button"
               onClick={handleImport}
               disabled={importing}
-              className="min-h-11 flex-1 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700 disabled:opacity-50"
+              className="min-h-11 flex-1 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark disabled:opacity-50"
             >
               {importing ? 'Importing…' : 'Import'}
             </button>
@@ -543,7 +543,7 @@ export function ImportScoresTab() {
           <button
             type="button"
             onClick={reset}
-            className="min-h-11 w-full rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700"
+            className="min-h-11 w-full rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark"
           >
             Import another file
           </button>

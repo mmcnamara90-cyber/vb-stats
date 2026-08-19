@@ -15,7 +15,7 @@ const ZONE_GRID: CourtZone[][] = [
 const ROTATIONS = [1, 2, 3, 4, 5, 6] as const;
 
 const inputClass =
-  'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-blue-500 focus:outline-none';
+  'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-brand-indigo focus:outline-none';
 
 export function LineupSimulatorTab({ team }: { team: Team }) {
   const [selectedLineupId, setSelectedLineupId] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export function LineupSimulatorTab({ team }: { team: Team }) {
         <button
           type="button"
           onClick={createLineup}
-          className="min-h-11 px-4 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700 shrink-0"
+          className="min-h-11 px-4 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark shrink-0"
         >
           + New
         </button>
@@ -181,7 +181,7 @@ function LineupEditor({ lineup, team, onBack }: { lineup: SavedLineup; team: Tea
             type="button"
             onClick={() => setRotation(r)}
             className={`min-h-9 px-3 rounded-lg text-sm font-medium border ${
-              rotation === r ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+              rotation === r ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
             }`}
           >
             Rotation {r}
@@ -224,7 +224,7 @@ function LineupEditor({ lineup, team, onBack }: { lineup: SavedLineup; team: Tea
                         ? 'bg-blue-50 border-blue-200'
                         : 'bg-white border-gray-200'
                       : player
-                        ? 'bg-blue-100 border-blue-500'
+                        ? 'bg-blue-100 border-brand-indigo'
                         : selectedBenchPlayerId
                           ? 'bg-blue-50 border-blue-400 border-dashed cursor-pointer'
                           : 'bg-white border-gray-200'
@@ -393,7 +393,7 @@ function SubsSection({
               type="button"
               onClick={addSub}
               disabled={!inPlayerId || !outPlayerId}
-              className="min-h-11 flex-1 rounded-lg bg-blue-600 text-white text-base font-medium active:bg-blue-700 disabled:opacity-50"
+              className="min-h-11 flex-1 rounded-lg bg-brand-indigo text-white text-base font-medium active:bg-brand-indigo-dark disabled:opacity-50"
             >
               Add
             </button>
@@ -404,7 +404,7 @@ function SubsSection({
           <button
             type="button"
             onClick={() => setShowAdd(true)}
-            className="min-h-9 px-3 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 text-xs font-medium"
+            className="min-h-9 px-3 rounded-lg border border-blue-300 bg-blue-50 text-brand-indigo-dark text-xs font-medium"
           >
             + Add sub
           </button>

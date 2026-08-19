@@ -5,6 +5,7 @@ import type { CourtZone, Game, GameLineup, LiberoAssignment, Player, PlannedSub 
 import { playerGradeLabel } from '../../lib/playerSearch';
 import { PositionBadges } from '../tryouts/PositionBadges';
 import { computeEffectiveCourt, liberoRotationPlan } from './effectiveCourt';
+import { fetchTeamSettings } from '../settings/teamSettings';
 
 const ZONE_GRID: CourtZone[][] = [
   [4, 3, 2], // front row, at the net
@@ -15,7 +16,14 @@ const ROTATIONS = [1, 2, 3, 4, 5, 6] as const;
 const selectClass =
   'min-h-10 w-full rounded-lg border border-gray-300 px-2 text-sm focus:border-brand-indigo focus:outline-none';
 
-function emptyLineup(gameId: string, setNumber: number): GameLineup {
+// Pre-fill this many blank libero slots (from Settings > Preferences,
+// "Liberos you typically run") so the coach just fills in names instead of
+// clicking "+ Add libero" first every set.
+function blankLiberoSlots(count: number): LiberoAssignment[] {
+  return Array.from({ length: count }, () => ({ id: crypto.randomUUID(), liberoPlayerId: '', shadowedPlayerIds: [] }));
+}
+
+function emptyLineup(gameId: string, setNumber: number, liberoCount: number): GameLineup {
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
@@ -23,7 +31,7 @@ function emptyLineup(gameId: string, setNumber: number): GameLineup {
     setNumber,
     zoneAssignments: {},
     subs: [],
-    liberos: [],
+    liberos: blankLiberoSlots(liberoCount),
     createdAt: now,
     updatedAt: now,
   };
@@ -34,10 +42,10 @@ function emptyLineup(gameId: string, setNumber: number): GameLineup {
 // sorts before every real ISO timestamp. Stamping it "now" instead was a
 // real bug caught in testing: a freshly-mounted phantom's timestamp is
 // *newer* than whatever real, previously-saved row eventually loads, so
-// the "adopt the server row once it's at least as fresh" check below would
-// never fire and a saved lineup would appear empty until you edited it.
-function phantomLineup(gameId: string, setNumber: number): GameLineup {
-  return { ...emptyLineup(gameId, setNumber), updatedAt: '' };
+// the "adopt the server row once it's at least as fresh" check never fired
+// and a saved lineup would appear empty until you edited it.
+function phantomLineup(gameId: string, setNumber: number, liberoCount: number): GameLineup {
+  return { ...emptyLineup(gameId, setNumber, liberoCount), updatedAt: '' };
 }
 
 export function GameLineupTab({ game }: { game: Game }) {
@@ -54,6 +62,8 @@ export function GameLineupTab({ game }: { game: Game }) {
     const { data } = await supabase.from('gameLineups').select('*').eq('gameId', game.id).order('setNumber');
     return (data as GameLineup[]) ?? [];
   }, [game.id]);
+  const teamSettings = useLiveQuery(() => fetchTeamSettings(game.team), [game.team]);
+  const liberoCount = teamSettings?.liberoCount ?? 1;
 
   const playersById = new Map((players ?? []).map((p) => [p.id, p]));
   const rosterPlayers = game.rosterPlayerIds
@@ -74,27 +84,33 @@ export function GameLineupTab({ game }: { game: Game }) {
   // persist() sidesteps that; it re-syncs to the server row once that row
   // is at least as fresh as our own last write (or immediately on set
   // switch), so it never diverges for long or fights genuine server state.
-  const [workingLineup, setWorkingLineup] = useState<GameLineup>(
-    () => serverLineup ?? phantomLineup(game.id, setNumber),
-  );
+  // Starts null rather than lazily building a phantom at mount time —
+  // building it eagerly raced teamSettings (still loading on first mount,
+  // always `undefined` for at least one render since the fetch is async),
+  // so a fresh Set 1 would silently get 1 pre-filled libero slot even when
+  // the coach has liberoCount set to 2. Waiting for teamSettings before
+  // creating the phantom (below) fixes that at the cost of one extra
+  // "Loading…" beat on first visit.
+  const [workingLineup, setWorkingLineup] = useState<GameLineup | null>(null);
 
   useEffect(() => {
+    if (teamSettings === undefined) return;
     setWorkingLineup((cur) => {
-      if (cur.setNumber !== setNumber) return serverLineup ?? phantomLineup(game.id, setNumber);
+      if (!cur || cur.setNumber !== setNumber) return serverLineup ?? phantomLineup(game.id, setNumber, liberoCount);
       if (serverLineup && serverLineup.updatedAt >= cur.updatedAt) return serverLineup;
       return cur;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverLineup, setNumber]);
+  }, [serverLineup, setNumber, teamSettings, liberoCount]);
 
-  if (lineups === undefined || players === undefined) {
+  if (lineups === undefined || players === undefined || workingLineup === null) {
     return <p className="text-gray-500">Loading…</p>;
   }
 
   const lineup = workingLineup;
 
   async function persist(patch: Partial<Pick<GameLineup, 'zoneAssignments' | 'subs' | 'liberos'>>) {
-    const updated = { ...workingLineup, ...patch, updatedAt: new Date().toISOString() };
+    const updated = { ...lineup, ...patch, updatedAt: new Date().toISOString() };
     setWorkingLineup(updated);
     await supabase.from('gameLineups').upsert(updated);
   }

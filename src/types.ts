@@ -127,6 +127,23 @@ export interface RosterDecision {
 // gets its own depth chart even though two teams share a tryout pool.
 export type Team = 'varsity' | 'jv' | 'freshman' | 'level3';
 
+// Coach-set defaults for a team, used to pre-fill Game Day rather than
+// re-entering the same choices every game. offenseSystem is stored/shown
+// for reference only right now — no behavior currently branches on it (the
+// back-row-setter assist default already works the same way under 5-1 or
+// 6-2, since it's rotation-based, not system-based). liberoCount pre-fills
+// that many blank libero slots when a new game lineup is created (see
+// emptyLineup in GameLineupTab.tsx). defaultCallUpPlayerIds are merged into
+// rosterPlayerIds when a new game is created (see NewGameForm in
+// GameDayScreen.tsx) — e.g. the 1-5 Varsity players who regularly play up.
+export interface TeamSettings {
+  team: Team;
+  offenseSystem: '5-1' | '6-2';
+  liberoCount: 1 | 2;
+  defaultCallUpPlayerIds: string[];
+  updatedAt: string;
+}
+
 // How many of a position a team needs. Editable per team — these are targets,
 // not hard caps.
 export interface PositionTarget {

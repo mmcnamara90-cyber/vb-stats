@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Game, RosterCandidate, Team } from '../../types';
 import { TEAM_LABELS, TEAMS } from '../tryouts/teams';
+import { fetchTeamSettings } from '../settings/teamSettings';
 import { GameDetailScreen } from './GameDetailScreen';
 
 const inputClass =
@@ -86,15 +87,20 @@ function NewGameForm({ team, onDone, onCancel }: { team: Team; onDone: (gameId: 
   async function create() {
     if (!opponent.trim() || saving) return;
     setSaving(true);
-    // Seed the roster with this team's confirmed players — the coach adds
-    // any call-ups (e.g. Varsity players playing up) from the Roster tab
-    // afterward.
-    const { data: candidates } = await supabase
-      .from('rosterCandidates')
-      .select('*')
-      .eq('team', team)
-      .eq('status', 'confirmed');
-    const rosterPlayerIds = [...new Set(((candidates as RosterCandidate[]) ?? []).map((c) => c.playerId))];
+    // Seed the roster with this team's confirmed players plus any standing
+    // call-ups set in Settings > Preferences (e.g. the Varsity players who
+    // regularly play up) — the coach can still add/remove call-ups for
+    // this specific game from the Roster tab afterward.
+    const [{ data: candidates }, teamSettings] = await Promise.all([
+      supabase.from('rosterCandidates').select('*').eq('team', team).eq('status', 'confirmed'),
+      fetchTeamSettings(team),
+    ]);
+    const rosterPlayerIds = [
+      ...new Set([
+        ...((candidates as RosterCandidate[]) ?? []).map((c) => c.playerId),
+        ...teamSettings.defaultCallUpPlayerIds,
+      ]),
+    ];
 
     const game: Game = {
       id: crypto.randomUUID(),

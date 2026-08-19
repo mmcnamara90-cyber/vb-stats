@@ -66,6 +66,11 @@ Tables that exist in `src/types.ts` (`Note`, `Lineup`, `StatEvent`, `Drill`,
 scaffold, Open Gym feature was removed) do **not** have Postgres tables —
 don't build against them without adding the migration first.
 
+Also (added after the list above was written, not yet folded in): `games`,
+`gameLineups`, `gameStatEvents` (see "Game Day" below) and `teamSettings`
+(see "Settings" below) — same allow-all RLS + realtime pattern as everything
+else.
+
 ## Auth
 
 Lightweight app-level gate, not real per-user security:
@@ -112,6 +117,59 @@ pattern, if you're extending this further:
 - Every component calls `supabase.from('table').select/insert/update/delete`
   directly (no repository/service layer) — matches the original Dexie-direct
   style, just swap the API surface.
+
+## Navigation
+
+`App.tsx` top nav is deliberately small: **🏐 Game Day** (default/home tab —
+the day-to-day screen) and **📊 Player Insights**, plus a **⚙️** gear button
+that opens `SettingsScreen`. Roster / Tryouts / Roster Builder used to be
+top-level tabs; they're occasional admin/setup work, not what the coach
+opens every day, so they're now sub-tabs inside Settings alongside a new
+Preferences sub-tab. Each of those three screens is otherwise unchanged —
+`SettingsScreen` just renders the existing `RosterScreen`/`TryoutsScreen`/
+`RosterBuilderScreen` components under its own sub-nav (`RosterBuilderScreen`
+still takes `initialTeam`, threaded through from the logged-in role; the
+other two never took team props). `RosterScreen`/`TryoutsScreen` already had
+their own `max-w-2xl mx-auto p-4` wrapper internally — don't add a second one
+around them in `SettingsScreen` or the layout doubles up.
+
+## Settings
+
+`src/features/settings/` — per-team coach defaults, meant to remove
+re-entering the same choices every game.
+
+- **`teamSettings` table**: one row per `Team`, upserted via
+  `fetchTeamSettings`/`saveTeamSettings` (`teamSettings.ts`) —
+  `fetchTeamSettings` returns `defaultTeamSettings(team)` (offenseSystem
+  `'6-2'`, liberoCount `1`, no call-ups) when no row exists yet, so callers
+  never have to null-check.
+- **Preferences tab** (`TeamPreferencesTab.tsx`, its own team switcher,
+  independent of Roster/Tryouts/Roster Builder's):
+  - **Default offense** (5-1 / 6-2): stored/shown only — nothing currently
+    branches on it. The assist auto-crediting (Game Day) is already
+    rotation-based, not system-based, so it works the same either way. Flag
+    this to the coach if they ask for offense-specific behavior; nothing's
+    wired yet.
+  - **Liberos you typically run** (1 or 2): pre-fills that many blank
+    libero slots when a new game's lineup is first created — see
+    `blankLiberoSlots()`/`emptyLineup()` in `GameLineupTab.tsx`.
+  - **Default call-ups**: player IDs merged into `rosterPlayerIds` when a
+    new game is created (`NewGameForm` in `GameDayScreen.tsx`), alongside
+    the team's confirmed `rosterCandidates` — e.g. the 1-5 Varsity players
+    who regularly play up, so they don't need re-adding every game. Still
+    editable per-game afterward from the Roster tab as before.
+  - **Gotcha already hit once, worth knowing**: `GameLineupTab.tsx`'s
+    `workingLineup` used to lazily build its initial phantom lineup (and
+    therefore its pre-filled libero slots) synchronously at mount, in the
+    same `useState` initializer — but `teamSettings` is always still
+    `undefined` on that very first render (the fetch is async), so a brand
+    new Set 1 would silently get only 1 libero slot regardless of the
+    coach's actual setting, every single time. Fixed by starting
+    `workingLineup` at `null` and creating the phantom in a `useEffect`
+    gated on `teamSettings !== undefined` instead — costs one extra
+    "Loading…" beat on first visit to a new lineup, but the pre-fill count
+    is then always correct. Don't move that phantom-creation back into a
+    `useState` lazy initializer.
 
 ## Roster Builder — business rules
 
@@ -451,6 +509,38 @@ sub-tabs) once a game is selected.
   Real LLM-generated insights would need a Supabase Edge Function +
   Anthropic API key (secret can't live in this static site) — a possible
   future upgrade, not built yet; everything above is rule-based.
+
+## Player Insights
+
+Top-level tab (`src/features/insights/PlayerInsightsScreen.tsx`) — a
+**cross-game** view of one player, distinct from Game Day's `GameInsightsTab`
+(scoped to a single `gameId`). Search any active player (global, not
+team-scoped, via the same `PlayerSearchInput`/`matchesPlayerQuery` used
+everywhere else — remember that's prefix-per-name, not full-name match, so
+"Ellie Thompson" as one query string won't match; search "Ellie" or
+"Thompson"), then optionally narrow to a date range (two plain `<input
+type="date">`s, filtered against `games.date`; blank on either side = no
+bound, so no range picked = all-time).
+
+- Finds every game the player's `rosterPlayerIds` includes (across all
+  teams — a Varsity call-up's JV appearances show up here too), filters by
+  date, then pulls that game set's `gameStatEvents` + `gameLineups`.
+- Reuses the same `gameStats.ts` building blocks as the per-game Insights
+  tab (`buildPlayerStatLine`, `buildInsights`) rather than duplicating
+  logic — just fed a wider, pre-filtered event set.
+- **`computeAssistCredits` gotcha**: it buckets by `${setNumber}:${rotation}`
+  with no `gameId` in the key, which only makes sense within one game's own
+  lineups — passing multiple games' events/lineups into one call would
+  collide e.g. Game A's Set 1/Rotation 1 with Game B's. `PlayerInsightsScreen`
+  runs it once per game in the range and sums this player's share, rather
+  than calling it once across everything. Don't "simplify" that into a
+  single combined call.
+- Shows: aggregate totals + the same good/watch flags as the per-game tab
+  (computed off the aggregate line), then a by-game breakdown table
+  (date/opponent/team/kills/errors/attempts/hit%/assists/SR avg/serve avg)
+  sorted chronologically, so the coach can eyeball a trend across games —
+  there's no separate cross-game trend algorithm, unlike the within-game
+  early/late split in `GameInsightsTab`.
 
 ## Volleyball domain knowledge
 

@@ -1,17 +1,20 @@
 import { useState } from 'react';
-import { RosterScreen } from './features/roster/RosterScreen';
-import { TryoutsScreen } from './features/tryouts/TryoutsScreen';
-import { RosterBuilderScreen } from './features/tryouts/RosterBuilderScreen';
 import { GameDayScreen } from './features/games/GameDayScreen';
+import { PlayerInsightsScreen } from './features/insights/PlayerInsightsScreen';
+import { SettingsScreen } from './features/settings/SettingsScreen';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { clearStoredTeam, getStoredTeam, setStoredTeam } from './lib/auth';
 import type { Team } from './types';
 
-type Tab = 'roster' | 'tryouts' | 'roster_builder' | 'game_day';
+// Game Day is the day-to-day screen, so it's the default/main tab now.
+// Roster / Tryouts / Roster Builder are occasional admin/setup work —
+// tucked behind the gear icon (SettingsScreen) instead of competing for
+// space in the main nav.
+type Tab = 'game_day' | 'player_insights' | 'settings';
 
 function App() {
   const [team, setTeam] = useState<Team | null>(() => getStoredTeam());
-  const [tab, setTab] = useState<Tab>('roster_builder');
+  const [tab, setTab] = useState<Tab>('game_day');
 
   if (!team) {
     return (
@@ -19,7 +22,7 @@ function App() {
         onLogin={(t) => {
           setStoredTeam(t);
           setTeam(t);
-          setTab('roster_builder');
+          setTab('game_day');
         }}
       />
     );
@@ -34,36 +37,28 @@ function App() {
     <div className="min-h-svh flex flex-col bg-gray-50">
       <nav className="flex items-center border-b border-gray-200 bg-white sticky top-0 z-10">
         <button
-          onClick={() => setTab('roster')}
-          className={`flex-1 min-h-11 text-base font-medium ${
-            tab === 'roster' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
-          }`}
-        >
-          Roster
-        </button>
-        <button
-          onClick={() => setTab('tryouts')}
-          className={`flex-1 min-h-11 text-base font-medium ${
-            tab === 'tryouts' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
-          }`}
-        >
-          Tryouts
-        </button>
-        <button
-          onClick={() => setTab('roster_builder')}
-          className={`flex-1 min-h-11 text-base font-medium ${
-            tab === 'roster_builder' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
-          }`}
-        >
-          Roster Builder
-        </button>
-        <button
           onClick={() => setTab('game_day')}
           className={`flex-1 min-h-11 text-base font-medium ${
             tab === 'game_day' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
           }`}
         >
           🏐 Game Day
+        </button>
+        <button
+          onClick={() => setTab('player_insights')}
+          className={`flex-1 min-h-11 text-base font-medium ${
+            tab === 'player_insights' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
+          }`}
+        >
+          📊 Player Insights
+        </button>
+        <button
+          onClick={() => setTab('settings')}
+          title="Settings"
+          aria-label="Settings"
+          className={`min-h-11 px-4 text-lg ${tab === 'settings' ? 'text-brand-indigo' : 'text-gray-500'}`}
+        >
+          ⚙️
         </button>
         <button
           onClick={handleLogout}
@@ -75,10 +70,9 @@ function App() {
       </nav>
 
       <main className="flex-1">
-        {tab === 'roster' && <RosterScreen />}
-        {tab === 'tryouts' && <TryoutsScreen />}
-        {tab === 'roster_builder' && <RosterBuilderScreen initialTeam={team} />}
         {tab === 'game_day' && <GameDayScreen initialTeam={team} />}
+        {tab === 'player_insights' && <PlayerInsightsScreen />}
+        {tab === 'settings' && <SettingsScreen initialTeam={team} />}
       </main>
     </div>
   );

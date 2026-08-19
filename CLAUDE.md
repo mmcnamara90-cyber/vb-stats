@@ -350,18 +350,23 @@ sub-tabs) once a game is selected.
     `GameStatType` and DB value purely so old games' data reads back
     correctly; no UI writes it anymore.
   - Passer (DS_L): serve receive 0-3 rating only.
-  - **Assist — every on-court player, not role-gated.** A kill's assist
-    is *assumed*, not tapped, by default: `computeAssistCredits()`
-    (`gameStats.ts`) credits any kill in a (set, rotation) bucket that
-    nobody explicitly tapped Assist for to that rotation's sole back-row
-    Setter (`backRowSetterId()` in `effectiveCourt.ts` — only fires when
-    exactly one Setter is back row; otherwise no default, coach must tap
-    explicitly). The Assist button is for the override case — a dig-and-set,
-    a broken play, a non-setter covering — tap the player who actually set
-    it and that kill's credit goes to them instead of the default. This
-    means the live tap flow needs zero extra taps for the common case
-    (the on-court setter ran the offense) and one tap to redirect credit
-    when it wasn't them. `assist` `gameStatEvent` rows only exist for
+  - **Assist — every on-court player except the current back-row setter,
+    not role-gated otherwise.** A kill's assist is *assumed*, not tapped,
+    by default: `computeAssistCredits()` (`gameStats.ts`) credits any kill
+    in a (set, rotation) bucket that nobody explicitly tapped Assist for to
+    that rotation's sole back-row Setter (`backRowSetterId()` in
+    `effectiveCourt.ts` — only fires when exactly one Setter is back row;
+    otherwise no default, coach must tap explicitly). The Assist button is
+    for the override case — a dig-and-set, a broken play, a non-setter
+    covering — tap the player who actually set it and that kill's credit
+    goes to them instead of the default. This means the live tap flow needs
+    zero extra taps for the common case (the on-court setter ran the
+    offense) and one tap to redirect credit when it wasn't them. The
+    back-row setter's own card has no Assist button — she's credited
+    automatically, so showing her one would just invite a redundant tap
+    (`isBackRowSetter` in `LiveStatsTab.tsx`, computed the same way per
+    rotation and passed to both the desktop card and the mobile Assist
+    category's row filter). `assist` `gameStatEvent` rows only exist for
     explicit taps — the default case is computed at read time (Insights,
     box score), never written.
   - **Serve** — a 0-3 quality rating (`ServeScoreBar` in `LiveStatsTab.tsx`,

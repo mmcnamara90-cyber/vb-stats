@@ -4,7 +4,7 @@ import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { CourtZone, Game, GameLineup, GameStatEvent, GameStatType, Player } from '../../types';
 import { PositionBadges } from '../tryouts/PositionBadges';
 import { GAME_STAT_LABELS, countEvents, serveAverage, serveReceiveAverage, statRolesForPositions } from './gameStats';
-import { computeEffectiveCourt } from './effectiveCourt';
+import { backRowSetterId, computeEffectiveCourt } from './effectiveCourt';
 
 const ROTATIONS = [1, 2, 3, 4, 5, 6] as const;
 // Net row first (where the action mostly is), then back row.
@@ -96,6 +96,10 @@ export function LiveStatsTab({ game }: { game: Game }) {
   const onCourtCount = ZONE_ORDER.filter((z) => onCourt[z]).length;
   const serverId = onCourt[1];
   const server = serverId ? playersById.get(serverId) : undefined;
+  // Whoever this is gets uncredited kills automatically (see
+  // computeAssistCredits in gameStats.ts) — her own Assist button is hidden
+  // below since tapping it would just be redundant with the default.
+  const backRowSetterPlayerId = backRowSetterId(onCourt, playersById);
 
   async function recordStat(playerId: string, statType: GameStatType, value?: number) {
     const event: GameStatEvent = {
@@ -241,6 +245,7 @@ export function LiveStatsTab({ game }: { game: Game }) {
           events={events}
           category={mobileCategory}
           liberosOnCourt={effective.liberosOnCourt}
+          backRowSetterPlayerId={backRowSetterPlayerId}
           onRecord={recordStat}
         />
       ) : (
@@ -258,6 +263,7 @@ export function LiveStatsTab({ game }: { game: Game }) {
                 events={events}
                 isLibero={!!activeLibero}
                 isServing={!!activeLibero?.serving}
+                isBackRowSetter={player.id === backRowSetterPlayerId}
                 onRecord={(t, v) => recordStat(player.id, t, v)}
               />
             );
@@ -314,6 +320,7 @@ function PlayerStatCard({
   events,
   isLibero,
   isServing,
+  isBackRowSetter,
   onRecord,
 }: {
   player: Player;
@@ -321,6 +328,7 @@ function PlayerStatCard({
   events: GameStatEvent[];
   isLibero: boolean;
   isServing: boolean;
+  isBackRowSetter: boolean;
   onRecord: (statType: GameStatType, value?: number) => void;
 }) {
   const roles = statRolesForPositions(player.positions);
@@ -368,17 +376,22 @@ function PlayerStatCard({
           </div>
         )}
 
-        {/* Assist — available to every on-court player, sits between serve
-            receive and the hitting boxes. Used to redirect credit when the
-            back-row setter wasn't the one who actually set the ball. */}
-        <button
-          type="button"
-          onClick={() => onRecord('assist')}
-          className="shrink-0 w-14 rounded-md bg-sky-600 active:bg-sky-700 text-white flex flex-col items-center justify-center gap-0.5"
-        >
-          <span className="text-[10px] font-semibold leading-none">Assist</span>
-          <span className="text-base font-extrabold leading-none">{countEvents(events, player.id, 'assist')}</span>
-        </button>
+        {/* Assist — available to every on-court player EXCEPT the current
+            back-row setter, sits between serve receive and the hitting
+            boxes. Used to redirect credit when the back-row setter wasn't
+            the one who actually set the ball; she's already auto-credited
+            by default (see computeAssistCredits), so her own button would
+            just be redundant. */}
+        {!isBackRowSetter && (
+          <button
+            type="button"
+            onClick={() => onRecord('assist')}
+            className="shrink-0 w-14 rounded-md bg-sky-600 active:bg-sky-700 text-white flex flex-col items-center justify-center gap-0.5"
+          >
+            <span className="text-[10px] font-semibold leading-none">Assist</span>
+            <span className="text-base font-extrabold leading-none">{countEvents(events, player.id, 'assist')}</span>
+          </button>
+        )}
 
         {showAttack && (
           <div className="flex-1 min-w-0 flex flex-col gap-1">
@@ -419,6 +432,7 @@ function MobileStatList({
   events,
   category,
   liberosOnCourt,
+  backRowSetterPlayerId,
   onRecord,
 }: {
   zones: CourtZone[];
@@ -427,6 +441,7 @@ function MobileStatList({
   events: GameStatEvent[];
   category: MobileCategory;
   liberosOnCourt: { zone: CourtZone }[];
+  backRowSetterPlayerId: string | undefined;
   onRecord: (playerId: string, statType: GameStatType, value?: number) => void;
 }) {
   const rows = zones
@@ -442,7 +457,9 @@ function MobileStatList({
   const applicableRows = rows.filter(({ player, isLibero }) => {
     const roles = statRolesForPositions(player.positions);
     if (category === 'attack') return (roles.hitter || roles.setter) && !isLibero;
-    if (category === 'assist') return true; // everyone
+    // Everyone except the back-row setter — she's auto-credited by
+    // default, so her own Assist button would be redundant.
+    if (category === 'assist') return player.id !== backRowSetterPlayerId;
     return roles.hitter || roles.passer || isLibero; // serve_receive
   });
 

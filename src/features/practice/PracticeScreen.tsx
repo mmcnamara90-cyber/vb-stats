@@ -2,24 +2,26 @@ import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Practice, RosterCandidate, Team } from '../../types';
-import { TEAM_LABELS, TEAMS } from '../tryouts/teams';
+import { TEAM_LABELS } from '../tryouts/teams';
 import { PracticeDetailScreen } from './PracticeDetailScreen';
 
 const inputClass =
   'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-brand-indigo focus:outline-none';
 
+// Only JV runs Practice this year — no team switcher, same as GameDayScreen.
+const team: Team = 'jv';
+
 // Deliberately simpler than GameDayScreen's NewGameForm: no opponent field,
 // and the roster is just this team's confirmed players — no call-up search,
 // since practice is the core team, not "who's playing up today."
-export function PracticeScreen({ initialTeam }: { initialTeam?: Team }) {
-  const [team, setTeam] = useState<Team>(initialTeam ?? 'jv');
+export function PracticeScreen() {
   const [selectedPracticeId, setSelectedPracticeId] = useState<string | null>(null);
   const [showNewPractice, setShowNewPractice] = useState(false);
 
   const practices = useLiveQuery(async () => {
     const { data } = await supabase.from('practices').select('*').eq('team', team).order('date', { ascending: false });
     return (data as Practice[]) ?? [];
-  }, [team]);
+  }, []);
 
   if (selectedPracticeId) {
     return <PracticeDetailScreen practiceId={selectedPracticeId} onBack={() => setSelectedPracticeId(null)} />;
@@ -28,21 +30,6 @@ export function PracticeScreen({ initialTeam }: { initialTeam?: Team }) {
   return (
     <div className="max-w-2xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">🏃 Practice</h1>
-
-      <div className="flex gap-2 flex-wrap mb-4">
-        {TEAMS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTeam(t)}
-            className={`min-h-11 px-4 rounded-lg text-sm font-medium border ${
-              team === t ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
-            }`}
-          >
-            {TEAM_LABELS[t]}
-          </button>
-        ))}
-      </div>
 
       {showNewPractice ? (
         <NewPracticeForm

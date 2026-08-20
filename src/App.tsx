@@ -79,8 +79,8 @@ function App() {
       </nav>
 
       <main className="flex-1">
-        {tab === 'game_day' && <GameDayScreen initialTeam={team} />}
-        {tab === 'practice' && <PracticeScreen initialTeam={team} />}
+        {tab === 'game_day' && <GameDayScreen />}
+        {tab === 'practice' && <PracticeScreen />}
         {tab === 'player_insights' && <PlayerInsightsScreen />}
         {tab === 'settings' && <SettingsScreen initialTeam={team} />}
       </main>

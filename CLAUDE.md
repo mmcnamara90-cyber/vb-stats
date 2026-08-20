@@ -134,6 +134,17 @@ other two never took team props). `RosterScreen`/`TryoutsScreen` already had
 their own `max-w-2xl mx-auto p-4` wrapper internally — don't add a second one
 around them in `SettingsScreen` or the layout doubles up.
 
+**Only JV runs Game Day/Practice/Preferences this year** — `GameDayScreen.tsx`,
+`PracticeScreen.tsx`, and `TeamPreferencesTab.tsx` each hardcode a
+module-level `const team: Team = 'jv'` and have no team-switcher UI anymore
+(they did originally — removed on request once it was clear only one team
+would use live tracking this season). **Roster Builder and Tryouts still
+have their full 4-team switchers** and were deliberately left alone — they
+need every team for the tryout pool and the "push down a level"/Varsity
+call-up workflows, which only make sense with cross-team visibility. If
+another team starts using Game Day/Practice in a future season, reintroduce
+a switcher there rather than assuming the whole app should be JV-only again.
+
 ## Settings
 
 `src/features/settings/` — per-team coach defaults, meant to remove
@@ -144,8 +155,8 @@ re-entering the same choices every game.
   `fetchTeamSettings` returns `defaultTeamSettings(team)` (offenseSystem
   `'6-2'`, liberoCount `1`, no call-ups) when no row exists yet, so callers
   never have to null-check.
-- **Preferences tab** (`TeamPreferencesTab.tsx`, its own team switcher,
-  independent of Roster/Tryouts/Roster Builder's):
+- **Preferences tab** (`TeamPreferencesTab.tsx` — JV-only, no team switcher;
+  see the Navigation section above):
   - **Default offense** (5-1 / 6-2): stored/shown only — nothing currently
     branches on it. The assist auto-crediting (Game Day) is already
     rotation-based, not system-based, so it works the same either way. Flag
@@ -548,43 +559,52 @@ everything rotation-specific:
   `rotation`) so `PracticeTrackTab` reuses them as-is; the rotation-aware
   functions (`computeAssistCredits`, `buildRotation*`) stayed
   `GameStatEvent`-only since they're meaningless without a lineup.
-- **No Practice Insights tab (yet)** — not built, since it wasn't asked for
-  and the live running counts on every stat button already cover the
-  in-the-moment need. `PlayerInsightsScreen` (cross-game) also does not
-  currently include practice data, only games. Both are reasonable follow-
-  ups if wanted later — flag it if that gap matters.
+- **No dedicated per-practice Insights tab** — not built, since it wasn't
+  asked for and the live running counts on every stat button already cover
+  the in-the-moment need. Cross-session insights for one player over time
+  *are* covered, though — see "Player Insights" below, which now includes
+  practice data alongside games with a source filter.
 
 ## Player Insights
 
 Top-level tab (`src/features/insights/PlayerInsightsScreen.tsx`) — a
-**cross-game** view of one player, distinct from Game Day's `GameInsightsTab`
-(scoped to a single `gameId`). Search any active player (global, not
-team-scoped, via the same `PlayerSearchInput`/`matchesPlayerQuery` used
-everywhere else — remember that's prefix-per-name, not full-name match, so
-"Ellie Thompson" as one query string won't match; search "Ellie" or
-"Thompson"), then optionally narrow to a date range (two plain `<input
-type="date">`s, filtered against `games.date`; blank on either side = no
-bound, so no range picked = all-time).
+**cross-game (and cross-practice)** view of one player, distinct from Game
+Day's `GameInsightsTab` (scoped to a single `gameId`). Search any active
+player (global, not team-scoped, via the same `PlayerSearchInput`/
+`matchesPlayerQuery` used everywhere else — remember that's prefix-per-name,
+not full-name match, so "Ellie Thompson" as one query string won't match;
+search "Ellie" or "Thompson"), pick a **Games + Practice / Games only /
+Practice only** source filter (defaults to combined), then optionally narrow
+to a date range (two plain `<input type="date">`s, filtered against
+`games.date`/`practices.date`; blank on either side = no bound, so no range
+picked = all-time).
 
-- Finds every game the player's `rosterPlayerIds` includes (across all
-  teams — a Varsity call-up's JV appearances show up here too), filters by
-  date, then pulls that game set's `gameStatEvents` + `gameLineups`.
+- Finds every game **and practice** the player's `rosterPlayerIds` includes
+  (across all teams — a Varsity call-up's JV appearances show up here too),
+  filters by date, then pulls the matching `gameStatEvents`/`gameLineups`
+  and `practiceStatEvents`.
 - Reuses the same `gameStats.ts` building blocks as the per-game Insights
   tab (`buildPlayerStatLine`, `buildInsights`) rather than duplicating
-  logic — just fed a wider, pre-filtered event set.
+  logic — just fed a wider, pre-filtered event set. `buildPlayerStatLine`
+  accepts `MinimalStatEvent[]` (see "Practice" below), so game and practice
+  events can be concatenated into one array for the combined aggregate line
+  without any special-casing.
 - **`computeAssistCredits` gotcha**: it buckets by `${setNumber}:${rotation}`
   with no `gameId` in the key, which only makes sense within one game's own
   lineups — passing multiple games' events/lineups into one call would
   collide e.g. Game A's Set 1/Rotation 1 with Game B's. `PlayerInsightsScreen`
   runs it once per game in the range and sums this player's share, rather
   than calling it once across everything. Don't "simplify" that into a
-  single combined call.
+  single combined call. Practice assists have no such crediting layer (no
+  rotation to infer from — see "Practice" below), so they're just summed
+  as raw explicit taps and added to the game-credited total.
 - Shows: aggregate totals + the same good/watch flags as the per-game tab
-  (computed off the aggregate line), then a by-game breakdown table
-  (date/opponent/team/kills/errors/attempts/hit%/assists/SR avg/serve avg)
-  sorted chronologically, so the coach can eyeball a trend across games —
-  there's no separate cross-game trend algorithm, unlike the within-game
-  early/late split in `GameInsightsTab`.
+  (computed off the aggregate line), then a unified **by-session** breakdown
+  table (date/type 🏐 or 🏃/opponent-or-label/kills/errors/attempts/hit%/
+  assists/SR avg/serve avg) sorted chronologically across both games and
+  practices together, so the coach can eyeball a trend across the whole
+  season — there's no separate cross-session trend algorithm, unlike the
+  within-game early/late split in `GameInsightsTab`.
 
 ## Volleyball domain knowledge
 

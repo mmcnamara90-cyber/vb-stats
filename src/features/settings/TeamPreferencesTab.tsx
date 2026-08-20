@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Player, Team, TeamSettings } from '../../types';
-import { TEAM_LABELS, TEAMS } from '../tryouts/teams';
+import { TEAM_LABELS } from '../tryouts/teams';
 import { PlayerSearchInput } from '../roster/PlayerSearchInput';
 import { PositionBadges } from '../tryouts/PositionBadges';
 import { playerGradeLabel, matchesPlayerQuery } from '../../lib/playerSearch';
@@ -13,8 +13,10 @@ const pillClass = (active: boolean) =>
     active ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
   }`;
 
+// Only JV runs Game Day/Practice this year — no team switcher here either.
+const team: Team = 'jv';
+
 export function TeamPreferencesTab() {
-  const [team, setTeam] = useState<Team>('jv');
   const [search, setSearch] = useState('');
 
   const settingsRows = useLiveQuery(async () => {
@@ -54,14 +56,6 @@ export function TeamPreferencesTab() {
       <p className="text-sm text-gray-500 mb-4">
         Defaults for this team — applied automatically so you're not re-entering the same choices every game.
       </p>
-
-      <div className="flex gap-2 flex-wrap mb-4">
-        {TEAMS.map((t) => (
-          <button key={t} type="button" onClick={() => setTeam(t)} className={pillClass(team === t)}>
-            {TEAM_LABELS[t]}
-          </button>
-        ))}
-      </div>
 
       <div className="rounded-lg border border-gray-200 p-3 mb-4">
         <label className="block text-xs font-medium text-gray-500 mb-1.5">Default offense</label>

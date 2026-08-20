@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { GameDayScreen } from './features/games/GameDayScreen';
+import { PracticeScreen } from './features/practice/PracticeScreen';
 import { PlayerInsightsScreen } from './features/insights/PlayerInsightsScreen';
 import { SettingsScreen } from './features/settings/SettingsScreen';
 import { LoginScreen } from './features/auth/LoginScreen';
@@ -10,7 +11,7 @@ import type { Team } from './types';
 // Roster / Tryouts / Roster Builder are occasional admin/setup work —
 // tucked behind the gear icon (SettingsScreen) instead of competing for
 // space in the main nav.
-type Tab = 'game_day' | 'player_insights' | 'settings';
+type Tab = 'game_day' | 'practice' | 'player_insights' | 'settings';
 
 function App() {
   const [team, setTeam] = useState<Team | null>(() => getStoredTeam());
@@ -38,15 +39,23 @@ function App() {
       <nav className="flex items-center border-b border-gray-200 bg-white sticky top-0 z-10">
         <button
           onClick={() => setTab('game_day')}
-          className={`flex-1 min-h-11 text-base font-medium ${
+          className={`flex-1 min-h-11 text-sm font-medium ${
             tab === 'game_day' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
           }`}
         >
           🏐 Game Day
         </button>
         <button
+          onClick={() => setTab('practice')}
+          className={`flex-1 min-h-11 text-sm font-medium ${
+            tab === 'practice' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
+          }`}
+        >
+          🏃 Practice
+        </button>
+        <button
           onClick={() => setTab('player_insights')}
-          className={`flex-1 min-h-11 text-base font-medium ${
+          className={`flex-1 min-h-11 text-sm font-medium ${
             tab === 'player_insights' ? 'text-brand-indigo border-b-2 border-brand-indigo' : 'text-gray-500'
           }`}
         >
@@ -71,6 +80,7 @@ function App() {
 
       <main className="flex-1">
         {tab === 'game_day' && <GameDayScreen initialTeam={team} />}
+        {tab === 'practice' && <PracticeScreen initialTeam={team} />}
         {tab === 'player_insights' && <PlayerInsightsScreen />}
         {tab === 'settings' && <SettingsScreen initialTeam={team} />}
       </main>

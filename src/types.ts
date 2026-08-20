@@ -309,6 +309,35 @@ export interface GameStatEvent {
   createdAt: string;        // ISO datetime
 }
 
+// ===== Practice stat tracking =====
+// A lighter-weight sibling of Game/GameStatEvent — no rotation/lineup/subs/
+// libero (practices aren't run as a fixed 6-on-court rotation) and no
+// opponent/call-up flow, just the team's own confirmed roster. See
+// PracticeTrackTab.tsx and gameStats.ts's MinimalStatEvent for how this
+// shares the same stat-card UI and box-score math as Game Day without
+// needing gameId/setNumber/rotation.
+export interface Practice {
+  id: string;
+  team: Team;
+  date: string;             // ISO date
+  label: string;            // e.g. "Practice", "Scrimmage" — free text, defaults to "Practice"
+  rosterPlayerIds: string[]; // snapshotted from confirmed rosterCandidates at creation
+  createdAt: string;        // ISO datetime
+}
+
+// Deliberately excludes set_attempt/serve — no setter-conversion tracking
+// and no server to track serve quality against without a rotation.
+export type PracticeStatType = 'attack_attempt' | 'kill' | 'attack_error' | 'serve_receive' | 'assist';
+
+export interface PracticeStatEvent {
+  id: string;
+  practiceId: string;
+  playerId: string;
+  statType: PracticeStatType;
+  value?: number;           // 0-3 rating, serve_receive only
+  createdAt: string;        // ISO datetime
+}
+
 // ===== Growth tracking =====
 // Just reuse SkillScore with sessionType filtered — no separate table needed.
 // Growth report = SkillScore[] grouped by playerId + skill, sorted by scoredAt.

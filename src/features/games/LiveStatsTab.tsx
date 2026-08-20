@@ -5,6 +5,7 @@ import type { CourtZone, Game, GameLineup, GameStatEvent, GameStatType, Player }
 import { PositionBadges } from '../tryouts/PositionBadges';
 import { GAME_STAT_LABELS, countEvents, serveAverage, serveReceiveAverage, statRolesForPositions } from './gameStats';
 import { backRowSetterId, computeEffectiveCourt } from './effectiveCourt';
+import { SR_RATINGS, SR_RATING_COLOR_CLASSES, StatButton } from './statButtons';
 
 const ROTATIONS = [1, 2, 3, 4, 5, 6] as const;
 // Net row first (where the action mostly is), then back row.
@@ -568,50 +569,6 @@ function MobileStatRow({
         </div>
       )}
     </div>
-  );
-}
-
-// Filled, high-contrast buttons — easy to read/tap at a glance during live
-// play. Serve-receive/serve ratings are color-coded by quality (0 = bad,
-// 3 = perfect), matching the common coaching-scoresheet convention.
-const SR_RATINGS = [0, 1, 2, 3] as const;
-const SR_RATING_COLOR_CLASSES: Record<(typeof SR_RATINGS)[number], string> = {
-  0: 'bg-rose-600 text-white active:bg-rose-700',
-  1: 'bg-orange-500 text-white active:bg-orange-600',
-  2: 'bg-amber-400 text-gray-900 active:bg-amber-500',
-  3: 'bg-emerald-600 text-white active:bg-emerald-700',
-};
-
-function StatButton({
-  label,
-  count,
-  onClick,
-  color,
-  large,
-  stack,
-}: {
-  label: string;
-  count: number;
-  onClick: () => void;
-  color: 'gray' | 'green' | 'red';
-  large?: boolean;
-  stack?: boolean;
-}) {
-  const colorClasses: Record<typeof color, string> = {
-    gray: 'bg-slate-600 active:bg-slate-700',
-    green: 'bg-emerald-600 active:bg-emerald-700',
-    red: 'bg-rose-600 active:bg-rose-700',
-  };
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`${stack ? 'w-full' : 'flex-1'} rounded-md font-semibold text-white ${colorClasses[color]} ${
-        large ? 'min-h-14 text-base' : 'min-h-9 text-xs'
-      }`}
-    >
-      {label} <span className={large ? 'font-extrabold text-lg' : 'font-bold'}>{count}</span>
-    </button>
   );
 }
 

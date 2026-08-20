@@ -121,8 +121,9 @@ pattern, if you're extending this further:
 ## Navigation
 
 `App.tsx` top nav is deliberately small: **🏐 Game Day** (default/home tab —
-the day-to-day screen) and **📊 Player Insights**, plus a **⚙️** gear button
-that opens `SettingsScreen`. Roster / Tryouts / Roster Builder used to be
+the day-to-day screen), **🏃 Practice** (see "Practice" below), and
+**📊 Player Insights**, plus a **⚙️** gear button that opens `SettingsScreen`.
+Roster / Tryouts / Roster Builder used to be
 top-level tabs; they're occasional admin/setup work, not what the coach
 opens every day, so they're now sub-tabs inside Settings alongside a new
 Preferences sub-tab. Each of those three screens is otherwise unchanged —
@@ -509,6 +510,49 @@ sub-tabs) once a game is selected.
   Real LLM-generated insights would need a Supabase Edge Function +
   Anthropic API key (secret can't live in this static site) — a possible
   future upgrade, not built yet; everything above is rule-based.
+
+## Practice
+
+Top-level tab (`src/features/practice/`) — a deliberately lighter sibling of
+Game Day for practice-day stat tracking, not a scaled-down copy of the whole
+Game/GameLineup/Live/Insights stack. Two tables, `practices` and
+`practiceStatEvents`, mirror `games`/`gameStatEvents` structurally but drop
+everything rotation-specific:
+
+- **No opponent, no call-up flow**: `NewPracticeForm` (`PracticeScreen.tsx`)
+  only asks for a label (defaults to "Practice", editable — e.g. "Scrimmage")
+  and a date. `rosterPlayerIds` is seeded from the team's confirmed
+  `rosterCandidates` only, same snapshot-at-creation pattern as `games` minus
+  the call-up merge — there's no "+ Add a player" search, matching the ask
+  that practice shouldn't need pulling in Varsity players.
+- **No Lineup tab, no rotation, no libero/subs, no serve tracking**: a
+  practice isn't run as a fixed 6-on-court rotation, so there's no zone
+  concept to key any of that off of. `PracticeStatEvent` has no `rotation`/
+  `setNumber`/`gameId` — just `practiceId`/`playerId`/`statType`/`value`.
+  `PracticeStatType` is `GameStatType` minus `set_attempt` and `serve`
+  (serve quality needs a Zone-1 server to attribute to; practice has none).
+- **`PracticeTrackTab.tsx` mimics the Live tab's card layout on purpose**
+  (SR square left / Assist middle / Attack-Kill-Error stacked right, same
+  mobile-view toggle with 3 categories, same filled high-contrast buttons)
+  but every roster player gets a card at once — no "6 on court" gating,
+  since there's no rotation to determine who's "in." `StatButton`/
+  `SR_RATINGS`/`SR_RATING_COLOR_CLASSES` were pulled out of `LiveStatsTab.tsx`
+  into `games/statButtons.tsx` so both tabs share the same building blocks
+  instead of duplicating them.
+- **Assist has no auto-credit default here** (unlike Game Day's
+  back-row-setter inference) — with no rotation there's no back-row setter
+  to infer from, so every Assist tap is always an explicit, direct credit.
+  `gameStats.ts`'s `countEvents`/`serveReceiveAverage`/`serveAverage`/
+  `buildPlayerStatLine` were relaxed to accept a `MinimalStatEvent` shape
+  (`playerId`/`statType`/`value`/`createdAt`, no `gameId`/`setNumber`/
+  `rotation`) so `PracticeTrackTab` reuses them as-is; the rotation-aware
+  functions (`computeAssistCredits`, `buildRotation*`) stayed
+  `GameStatEvent`-only since they're meaningless without a lineup.
+- **No Practice Insights tab (yet)** — not built, since it wasn't asked for
+  and the live running counts on every stat button already cover the
+  in-the-moment need. `PlayerInsightsScreen` (cross-game) also does not
+  currently include practice data, only games. Both are reasonable follow-
+  ups if wanted later — flag it if that gap matters.
 
 ## Player Insights
 

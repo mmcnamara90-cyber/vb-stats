@@ -1,6 +1,21 @@
 import type { GameLineup, GameStatEvent, GameStatType, Player, Position } from '../../types';
 import { backRowSetterId, computeEffectiveCourt } from './effectiveCourt';
 
+// The subset of a stat-event's fields these building blocks actually need —
+// deliberately not the full GameStatEvent (which also carries gameId/
+// setNumber/rotation, meaningless outside a game's rotation). Both
+// GameStatEvent and PracticeStatEvent satisfy this shape structurally, so
+// PracticeTrackTab.tsx can reuse countEvents/serveReceiveAverage/
+// buildPlayerStatLine/buildPlayerTrends as-is. Only the rotation-aware
+// functions below (computeAssistCredits, buildRotation*) stay GameStatEvent-
+// only, since practices have no rotation/lineup to key off of.
+export interface MinimalStatEvent {
+  playerId: string;
+  statType: GameStatType;
+  value?: number;
+  createdAt: string;
+}
+
 // Which stat buttons a player's card shows, keyed off their tagged
 // position(s) — a player tagged e.g. both OH and DS_L gets the union of
 // both blocks (hitter buttons + serve receive), not a forced single role.
@@ -31,17 +46,17 @@ export const GAME_STAT_LABELS: Record<GameStatType, string> = {
   serve: 'Serve',
 };
 
-export function countEvents(events: GameStatEvent[], playerId: string, statType: GameStatType): number {
+export function countEvents(events: MinimalStatEvent[], playerId: string, statType: GameStatType): number {
   return events.filter((e) => e.playerId === playerId && e.statType === statType).length;
 }
 
-export function serveReceiveAverage(events: GameStatEvent[], playerId: string): number | undefined {
+export function serveReceiveAverage(events: MinimalStatEvent[], playerId: string): number | undefined {
   const taps = events.filter((e) => e.playerId === playerId && e.statType === 'serve_receive' && e.value != null);
   if (taps.length === 0) return undefined;
   return taps.reduce((sum, e) => sum + (e.value ?? 0), 0) / taps.length;
 }
 
-export function serveAverage(events: GameStatEvent[], playerId: string): number | undefined {
+export function serveAverage(events: MinimalStatEvent[], playerId: string): number | undefined {
   const taps = events.filter((e) => e.playerId === playerId && e.statType === 'serve' && e.value != null);
   if (taps.length === 0) return undefined;
   return taps.reduce((sum, e) => sum + (e.value ?? 0), 0) / taps.length;
@@ -62,7 +77,7 @@ export interface PlayerGameStatLine {
   settingConversionPct?: number; // assists / setAttempts — historical only
 }
 
-export function buildPlayerStatLine(player: Player, events: GameStatEvent[]): PlayerGameStatLine {
+export function buildPlayerStatLine(player: Player, events: MinimalStatEvent[]): PlayerGameStatLine {
   const playerEvents = events.filter((e) => e.playerId === player.id);
   const attackAttempts = playerEvents.filter((e) => e.statType === 'attack_attempt').length;
   const kills = playerEvents.filter((e) => e.statType === 'kill').length;

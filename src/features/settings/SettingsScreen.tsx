@@ -3,14 +3,16 @@ import { RosterScreen } from '../roster/RosterScreen';
 import { TryoutsScreen } from '../tryouts/TryoutsScreen';
 import { RosterBuilderScreen } from '../tryouts/RosterBuilderScreen';
 import { TeamPreferencesTab } from './TeamPreferencesTab';
+import { CaptainsTab } from '../captains/CaptainsTab';
 import type { Team } from '../../types';
 
-type SubTab = 'roster' | 'tryouts' | 'roster_builder' | 'preferences';
+type SubTab = 'roster' | 'tryouts' | 'roster_builder' | 'captains' | 'preferences';
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: 'roster', label: 'Roster' },
   { id: 'tryouts', label: 'Tryouts' },
   { id: 'roster_builder', label: 'Roster Builder' },
+  { id: 'captains', label: 'Captains' },
   { id: 'preferences', label: 'Preferences' },
 ];
 
@@ -43,6 +45,7 @@ export function SettingsScreen({ initialTeam }: { initialTeam?: Team }) {
       {subTab === 'roster' && <RosterScreen />}
       {subTab === 'tryouts' && <TryoutsScreen />}
       {subTab === 'roster_builder' && <RosterBuilderScreen initialTeam={initialTeam} />}
+      {subTab === 'captains' && <CaptainsTab />}
       {subTab === 'preferences' && (
         <div className="max-w-2xl mx-auto p-4">
           <TeamPreferencesTab />

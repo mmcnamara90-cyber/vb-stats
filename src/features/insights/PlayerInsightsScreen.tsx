@@ -1,18 +1,13 @@
 import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
-import type { Game, GameLineup, GameStatEvent, Player, Practice, PracticeStatEvent } from '../../types';
+import type { Player, RosterCandidate, Team, TeamSettings } from '../../types';
 import { PlayerSearchInput } from '../roster/PlayerSearchInput';
 import { PositionBadges } from '../tryouts/PositionBadges';
 import { playerGradeLabel, matchesPlayerQuery } from '../../lib/playerSearch';
-import { TEAM_LABELS } from '../tryouts/teams';
-import {
-  buildInsights,
-  buildPlayerStatLine,
-  computeAssistCredits,
-  type MinimalStatEvent,
-  type PlayerGameStatLine,
-} from '../games/gameStats';
+import { buildInsights } from '../games/gameStats';
+import { defaultTeamSettings } from '../settings/teamSettings';
+import { fetchPlayerAggregate } from './playerAggregate';
 
 const inputClass =
   'min-h-10 rounded-lg border border-gray-300 px-2 text-sm focus:border-brand-indigo focus:outline-none';
@@ -24,13 +19,19 @@ const SOURCES: { id: Source; label: string }[] = [
   { id: 'practices', label: 'Practice only' },
 ];
 
-// Cross-game (and now cross-practice) view of one player's stats — distinct
-// from the per-game Insights tab (GameInsightsTab, scoped to a single
-// gameId). Reuses the same gameStats.ts building blocks, just fed a wider,
-// filtered event set.
+// Matches Game Day/Practice — only JV runs live tracking this year.
+const team: Team = 'jv';
+
+// Cross-game (and cross-practice) view of a player's stats — distinct from
+// the per-game Insights tab (GameInsightsTab, scoped to a single gameId).
+// Defaults to a roster overview grid (the core 10 + the known Varsity
+// push-downs from Settings > Preferences' default call-ups) with a tap-in
+// profile view per player; a player search remains available underneath for
+// anyone outside that group (e.g. a one-off call-up from another team).
 export function PlayerInsightsScreen() {
-  const [search, setSearch] = useState('');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [source, setSource] = useState<Source>('both');
@@ -39,115 +40,201 @@ export function PlayerInsightsScreen() {
     const { data } = await supabase.from('players').select('*').eq('active', true);
     return (data as Player[]) ?? [];
   }, []);
+  const rosterCandidates = useLiveQuery(async () => {
+    const { data } = await supabase.from('rosterCandidates').select('*').eq('team', team).eq('status', 'confirmed');
+    return (data as RosterCandidate[]) ?? [];
+  }, []);
+  const settingsRows = useLiveQuery(async () => {
+    const { data } = await supabase.from('teamSettings').select('*').eq('team', team);
+    return (data as TeamSettings[]) ?? [];
+  }, []);
 
-  if (players === undefined) return <p className="text-gray-500 p-4">Loading…</p>;
+  if (players === undefined || rosterCandidates === undefined || settingsRows === undefined) {
+    return <p className="text-gray-500 p-4">Loading…</p>;
+  }
+
+  const settings = settingsRows.find((s) => s.team === team) ?? defaultTeamSettings(team);
+  const playersById = new Map(players.map((p) => [p.id, p]));
+  const rosterIds = [...new Set([...rosterCandidates.map((c) => c.playerId), ...settings.defaultCallUpPlayerIds])];
+  const rosterPlayers = rosterIds
+    .map((id) => playersById.get(id))
+    .filter((p): p is Player => !!p)
+    .sort((a, b) => a.firstName.localeCompare(b.firstName));
 
   const player = players.find((p) => p.id === selectedPlayerId);
   const candidates = search
     ? players.filter((p) => matchesPlayerQuery(p, search)).sort((a, b) => a.firstName.localeCompare(b.firstName))
     : [];
 
-  return (
-    <div className="max-w-2xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-1">Player Insights</h1>
-      <p className="text-sm text-gray-500 mb-4">
-        One player's stats across every Game Day game and Practice session they've been part of, with an optional
-        date range.
-      </p>
+  function selectPlayer(id: string) {
+    setSelectedPlayerId(id);
+    setSearch('');
+    setShowSearch(false);
+    setFromDate('');
+    setToDate('');
+    setSource('both');
+  }
 
-      <PlayerSearchInput value={search} onChange={setSearch} />
-      {search && (
-        <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 mt-1 mb-4 max-h-64 overflow-y-auto">
-          {candidates.slice(0, 20).map((p) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedPlayerId(p.id);
-                  setSearch('');
-                }}
-                className="w-full min-h-11 flex items-center gap-1.5 px-3 py-2 text-left flex-wrap"
-              >
-                <span className="font-medium text-gray-900">
-                  {p.firstName} {p.lastName}
-                </span>
-                <span className="text-xs text-gray-500">{playerGradeLabel(p)}</span>
-                <PositionBadges positions={p.positions} />
-              </button>
-            </li>
-          ))}
-          {candidates.length === 0 && <li className="px-3 py-2 text-sm text-gray-400">No matches.</li>}
-        </ul>
-      )}
+  if (!player) {
+    return (
+      <div className="max-w-4xl mx-auto p-4">
+        <h1 className="text-2xl font-bold mb-1">Player Insights</h1>
+        <p className="text-sm text-gray-500 mb-4">
+          Tap a player for their stats across every Game Day game and Practice session they've been part of.
+        </p>
 
-      {!player ? (
-        <p className="text-sm text-gray-500 mt-2">Search for a player above to see their stats.</p>
-      ) : (
-        <>
-          <div className="flex items-center justify-between gap-2 flex-wrap mb-4 mt-2">
-            <span className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-semibold text-gray-900 text-lg">
-                {player.firstName} {player.lastName}
-              </span>
-              <span className="text-sm text-gray-500">{playerGradeLabel(player)}</span>
-              <PositionBadges positions={player.positions} />
-            </span>
-            <button
-              type="button"
-              onClick={() => setSelectedPlayerId(null)}
-              className="min-h-9 px-3 rounded-lg border border-gray-300 text-xs font-medium text-gray-600"
-            >
-              Change player
-            </button>
-          </div>
-
-          <div className="flex gap-1.5 flex-wrap mb-3">
-            {SOURCES.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSource(s.id)}
-                className={`min-h-9 px-3 rounded-lg text-xs font-medium border ${
-                  source === s.id ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
-                }`}
-              >
-                {s.label}
-              </button>
+        {rosterPlayers.length === 0 ? (
+          <p className="text-sm text-gray-500 mb-4">
+            No confirmed JV roster yet — confirm players in Settings → Roster Builder, or set default call-ups in
+            Settings → Preferences.
+          </p>
+        ) : (
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
+            {rosterPlayers.map((p) => (
+              <PlayerGridCard key={p.id} player={p} playersById={playersById} onSelect={() => selectPlayer(p.id)} />
             ))}
           </div>
+        )}
 
-          <div className="flex items-center gap-2 flex-wrap mb-4">
-            <span className="text-xs font-medium text-gray-500">From</span>
-            <input type="date" className={inputClass} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            <span className="text-xs font-medium text-gray-500">To</span>
-            <input type="date" className={inputClass} value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            {(fromDate || toDate) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setFromDate('');
-                  setToDate('');
-                }}
-                className="min-h-9 px-3 rounded-lg border border-gray-300 text-xs font-medium text-gray-600"
-              >
-                Clear (all-time)
-              </button>
+        <button
+          type="button"
+          onClick={() => setShowSearch((v) => !v)}
+          className="text-xs font-medium text-brand-indigo underline"
+        >
+          {showSearch ? 'Hide search' : 'Looking for someone else? Search all players'}
+        </button>
+
+        {showSearch && (
+          <div className="mt-2">
+            <PlayerSearchInput value={search} onChange={setSearch} />
+            {search && (
+              <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 mt-1 max-h-64 overflow-y-auto">
+                {candidates.slice(0, 20).map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => selectPlayer(p.id)}
+                      className="w-full min-h-11 flex items-center gap-1.5 px-3 py-2 text-left flex-wrap"
+                    >
+                      <span className="font-medium text-gray-900">
+                        {p.firstName} {p.lastName}
+                      </span>
+                      <span className="text-xs text-gray-500">{playerGradeLabel(p)}</span>
+                      <PositionBadges positions={p.positions} />
+                    </button>
+                  </li>
+                ))}
+                {candidates.length === 0 && <li className="px-3 py-2 text-sm text-gray-400">No matches.</li>}
+              </ul>
             )}
           </div>
+        )}
+      </div>
+    );
+  }
 
-          <PlayerInsightsBody player={player} players={players} fromDate={fromDate} toDate={toDate} source={source} />
-        </>
-      )}
+  return (
+    <div className="max-w-2xl mx-auto p-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
+        <span className="flex items-center gap-1.5 flex-wrap">
+          <span className="font-semibold text-gray-900 text-lg">
+            {player.firstName} {player.lastName}
+          </span>
+          <span className="text-sm text-gray-500">{playerGradeLabel(player)}</span>
+          <PositionBadges positions={player.positions} />
+        </span>
+        <button
+          type="button"
+          onClick={() => setSelectedPlayerId(null)}
+          className="min-h-9 px-3 rounded-lg border border-gray-300 text-xs font-medium text-gray-600"
+        >
+          ← All players
+        </button>
+      </div>
+
+      <div className="flex gap-1.5 flex-wrap mb-3">
+        {SOURCES.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setSource(s.id)}
+            className={`min-h-9 px-3 rounded-lg text-xs font-medium border ${
+              source === s.id ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap mb-4">
+        <span className="text-xs font-medium text-gray-500">From</span>
+        <input type="date" className={inputClass} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        <span className="text-xs font-medium text-gray-500">To</span>
+        <input type="date" className={inputClass} value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        {(fromDate || toDate) && (
+          <button
+            type="button"
+            onClick={() => {
+              setFromDate('');
+              setToDate('');
+            }}
+            className="min-h-9 px-3 rounded-lg border border-gray-300 text-xs font-medium text-gray-600"
+          >
+            Clear (all-time)
+          </button>
+        )}
+      </div>
+
+      <PlayerInsightsBody player={player} players={players} fromDate={fromDate} toDate={toDate} source={source} />
     </div>
   );
 }
 
-interface SessionRow {
-  id: string;
-  date: string;
-  type: 'game' | 'practice';
-  label: string; // "vs. X (Team)" or the practice label
-  line: PlayerGameStatLine;
+// One tile in the 5x3 (desktop) / 3-wide (mobile) roster grid — a compact,
+// always all-time + both-sources summary. Each card does its own fetch (15
+// small queries) rather than one giant combined query; at this app's scale
+// (15 players) that's simpler than threading a batch fetch through, and it
+// still benefits from the same coarse realtime refetch-on-any-change pattern
+// as everywhere else.
+function PlayerGridCard({
+  player,
+  playersById,
+  onSelect,
+}: {
+  player: Player;
+  playersById: Map<string, Player>;
+  onSelect: () => void;
+}) {
+  const result = useLiveQuery(() => fetchPlayerAggregate(player, playersById), [player.id]);
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="min-h-24 rounded-lg border border-gray-200 bg-white p-2 text-left active:bg-gray-50 flex flex-col gap-1"
+    >
+      <span className="font-semibold text-gray-900 text-sm leading-tight">
+        {player.firstName} {player.lastName}
+      </span>
+      <span className="flex items-center gap-1 flex-wrap">
+        <span className="text-[11px] text-gray-500">{playerGradeLabel(player)}</span>
+        <PositionBadges positions={player.positions} />
+      </span>
+      {result === undefined ? (
+        <span className="text-[11px] text-gray-400">Loading…</span>
+      ) : result.gameCount + result.practiceCount === 0 ? (
+        <span className="text-[11px] text-gray-400">No stats yet</span>
+      ) : (
+        <span className="text-[11px] text-gray-600 leading-snug">
+          {result.gameCount + result.practiceCount} session{result.gameCount + result.practiceCount === 1 ? '' : 's'}
+          {result.line.hittingPct != null && <> · {(result.line.hittingPct * 100).toFixed(0)}% hit</>}
+          {result.line.serveReceiveAvg != null && <> · {result.line.serveReceiveAvg.toFixed(1)} SR</>}
+          {result.line.assists > 0 && <> · {result.line.assists} ast</>}
+        </span>
+      )}
+    </button>
+  );
 }
 
 function PlayerInsightsBody({
@@ -165,85 +252,15 @@ function PlayerInsightsBody({
 }) {
   const includeGames = source !== 'practices';
   const includePractices = source !== 'games';
-
-  const games = useLiveQuery(async () => {
-    const { data } = await supabase.from('games').select('*').contains('rosterPlayerIds', [player.id]);
-    return (data as Game[]) ?? [];
-  }, [player.id]);
-  const practices = useLiveQuery(async () => {
-    const { data } = await supabase.from('practices').select('*').contains('rosterPlayerIds', [player.id]);
-    return (data as Practice[]) ?? [];
-  }, [player.id]);
-
-  const inRangeGames = (games ?? [])
-    .filter((g) => (!fromDate || g.date >= fromDate) && (!toDate || g.date <= toDate))
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const gameIds = inRangeGames.map((g) => g.id);
-  const inRangePractices = (practices ?? [])
-    .filter((p) => (!fromDate || p.date >= fromDate) && (!toDate || p.date <= toDate))
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const practiceIds = inRangePractices.map((p) => p.id);
-
-  const events = useLiveQuery(async () => {
-    if (gameIds.length === 0) return [];
-    const { data } = await supabase.from('gameStatEvents').select('*').in('gameId', gameIds);
-    return (data as GameStatEvent[]) ?? [];
-  }, [gameIds.join(',')]);
-  const lineups = useLiveQuery(async () => {
-    if (gameIds.length === 0) return [];
-    const { data } = await supabase.from('gameLineups').select('*').in('gameId', gameIds);
-    return (data as GameLineup[]) ?? [];
-  }, [gameIds.join(',')]);
-  const practiceEvents = useLiveQuery(async () => {
-    if (practiceIds.length === 0) return [];
-    const { data } = await supabase.from('practiceStatEvents').select('*').in('practiceId', practiceIds);
-    return (data as PracticeStatEvent[]) ?? [];
-  }, [practiceIds.join(',')]);
-
-  if (games === undefined || events === undefined || lineups === undefined || practices === undefined || practiceEvents === undefined) {
-    return <p className="text-gray-500">Loading…</p>;
-  }
-
   const playersById = new Map(players.map((p) => [p.id, p]));
-  const sessions: SessionRow[] = [];
-  let creditedGameAssists = 0;
-  let rawPracticeAssists = 0;
-  const combinedEvents: MinimalStatEvent[] = [];
 
-  // Assist crediting (computeAssistCredits) buckets by set+rotation, which
-  // only makes sense within a single game's own lineups — run it once per
-  // game and sum this player's share, rather than passing every game's
-  // events/lineups in together (that would collide Set 1/Rotation 1 across
-  // different games). Practice has no rotation, so its assists are always
-  // just the raw explicit taps.
-  if (includeGames) {
-    for (const game of inRangeGames) {
-      const gameEvents = events.filter((e) => e.gameId === game.id);
-      const gameLineups = lineups.filter((l) => l.gameId === game.id);
-      const credits = computeAssistCredits(gameEvents, gameLineups, playersById);
-      const assists = credits.get(player.id) ?? 0;
-      creditedGameAssists += assists;
-      const playerGameEvents = gameEvents.filter((e) => e.playerId === player.id);
-      combinedEvents.push(...playerGameEvents);
-      if (playerGameEvents.length === 0 && assists === 0) continue;
-      const line = { ...buildPlayerStatLine(player, gameEvents), assists };
-      sessions.push({ id: game.id, date: game.date, type: 'game', label: `vs. ${game.opponent} (${TEAM_LABELS[game.team]})`, line });
-    }
-  }
+  const result = useLiveQuery(
+    () => fetchPlayerAggregate(player, playersById, { fromDate, toDate, includeGames, includePractices }),
+    [player.id, fromDate, toDate, includeGames, includePractices],
+  );
 
-  if (includePractices) {
-    for (const practice of inRangePractices) {
-      const thisPracticeEvents = practiceEvents.filter((e) => e.practiceId === practice.id);
-      const playerPracticeEvents = thisPracticeEvents.filter((e) => e.playerId === player.id);
-      if (playerPracticeEvents.length === 0) continue;
-      rawPracticeAssists += playerPracticeEvents.filter((e) => e.statType === 'assist').length;
-      combinedEvents.push(...playerPracticeEvents);
-      const line = buildPlayerStatLine(player, thisPracticeEvents);
-      sessions.push({ id: practice.id, date: practice.date, type: 'practice', label: practice.label, line });
-    }
-  }
-
-  sessions.sort((a, b) => a.date.localeCompare(b.date));
+  if (result === undefined) return <p className="text-gray-500">Loading…</p>;
+  const { line: aggregate, sessions, gameCount, practiceCount } = result;
 
   if (sessions.length === 0) {
     return (
@@ -254,13 +271,7 @@ function PlayerInsightsBody({
     );
   }
 
-  const aggregate: PlayerGameStatLine = {
-    ...buildPlayerStatLine(player, combinedEvents),
-    assists: creditedGameAssists + rawPracticeAssists,
-  };
   const insights = buildInsights([aggregate]);
-  const gameCount = sessions.filter((s) => s.type === 'game').length;
-  const practiceCount = sessions.filter((s) => s.type === 'practice').length;
   const totalsLabel = [
     gameCount > 0 ? `${gameCount} game${gameCount === 1 ? '' : 's'}` : null,
     practiceCount > 0 ? `${practiceCount} practice${practiceCount === 1 ? '' : 's'}` : null,

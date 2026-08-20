@@ -569,15 +569,32 @@ everything rotation-specific:
 
 Top-level tab (`src/features/insights/PlayerInsightsScreen.tsx`) — a
 **cross-game (and cross-practice)** view of one player, distinct from Game
-Day's `GameInsightsTab` (scoped to a single `gameId`). Search any active
-player (global, not team-scoped, via the same `PlayerSearchInput`/
-`matchesPlayerQuery` used everywhere else — remember that's prefix-per-name,
-not full-name match, so "Ellie Thompson" as one query string won't match;
-search "Ellie" or "Thompson"), pick a **Games + Practice / Games only /
-Practice only** source filter (defaults to combined), then optionally narrow
-to a date range (two plain `<input type="date">`s, filtered against
-`games.date`/`practices.date`; blank on either side = no bound, so no range
-picked = all-time).
+Day's `GameInsightsTab` (scoped to a single `gameId`).
+
+- **Default view is a roster grid**, not a search box: a responsive
+  `grid-cols-3 sm:grid-cols-5` grid (3-wide on phone, 5x3 on desktop) of
+  `PlayerGridCard`s for "the 15" — JV's confirmed `rosterCandidates` union
+  Settings → Preferences' `defaultCallUpPlayerIds` (the known Varsity
+  push-downs), deduped. Each card does its own small `fetchPlayerAggregate`
+  call (all-time, both sources) and shows session count + whichever of
+  hit%/SR avg/assists apply — tap a card to open that player's full profile
+  (same source-filter + date-range + by-session view as before). A
+  "Looking for someone else? Search all players" link below the grid reveals
+  the old global `PlayerSearchInput`/`matchesPlayerQuery` search (prefix-
+  per-name, not full-name match — "Ellie Thompson" as one string won't
+  match, search "Ellie" or "Thompson") for anyone outside that group, e.g. a
+  one-off call-up from another team.
+- **`src/features/insights/playerAggregate.ts`** — `fetchPlayerAggregate(player,
+  playersById, opts?)` holds the actual games+practices+events fetch, the
+  per-game `computeAssistCredits` loop, and the combined aggregate line;
+  pulled out of the screen so both the grid cards (all-time, both sources,
+  no options) and the profile view (opts = `{fromDate, toDate, includeGames,
+  includePractices}`) share one implementation instead of drifting apart.
+- **Profile view**: pick a **Games + Practice / Games only / Practice only**
+  source filter (defaults to combined), then optionally narrow to a date
+  range (two plain `<input type="date">`s, filtered against
+  `games.date`/`practices.date`; blank on either side = no bound, so no
+  range picked = all-time).
 
 - Finds every game **and practice** the player's `rosterPlayerIds` includes
   (across all teams — a Varsity call-up's JV appearances show up here too),

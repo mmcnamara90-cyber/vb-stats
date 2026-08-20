@@ -109,9 +109,11 @@ scaffold, Open Gym feature was removed) do **not** have Postgres tables —
 don't build against them without adding the migration first.
 
 Also (added after the list above was written, not yet folded in): `games`,
-`gameLineups`, `gameStatEvents` (see "Game Day" below) and `teamSettings`
-(see "Settings" below) — same allow-all RLS + realtime pattern as everything
-else.
+`gameLineups`, `gameStatEvents` (see "Game Day" below), `teamSettings`
+(see "Settings" below), `practices`/`practiceStatEvents`/`drills`/
+`practiceDrillLogs` (see "Practice" below), and `captainElections`/
+`captainBallots` (see "Captain Vote" below) — same allow-all RLS + realtime
+pattern as everything else.
 
 ## Auth
 
@@ -810,6 +812,88 @@ Day's `GameInsightsTab` (scoped to a single `gameId`).
   practices together, so the coach can eyeball a trend across the whole
   season — there's no separate cross-session trend algorithm, unlike the
   within-game early/late split in `GameInsightsTab`.
+
+## Captain Vote
+
+`src/features/captains/` — a player-facing ranked-choice ballot for picking
+team captains, built on the coach's previous Google Form (two screenshots
+shared directly, not re-derived from memory). JV-only, same
+hardcode-no-switcher pattern as Game Day/Practice (`const team: Team = 'jv'`
+in `CaptainsTab.tsx` and `PlayerVoteApp.tsx`).
+
+- **Carried over from the old form**: the "what qualities matter most to you
+  in a captain" checklist (asked once per ballot) and "why did you select
+  this person" reasons checklist — both kept close to the original wording
+  (`CAPTAIN_QUALITIES`/`CAPTAIN_VOTE_REASONS` in `captainVoting.ts`).
+- **Improved over the old form**: the old form only captured a single top
+  pick; this one asks for a ranked top 2-3 (1st/2nd required, 3rd optional),
+  and asks the "why" reasons per ranked pick instead of just once. Self-votes
+  are blocked (a player's own name never appears in her own candidate list)
+  and a player can't submit twice (DB unique constraint on
+  `("electionId","voterId")` in `captainBallots`, plus a live check that
+  routes an already-voted player straight to a "thanks for voting" screen).
+  Results shown to the coach are **anonymous tallies only** — `voterId` on
+  each ballot exists solely to enforce the one-vote/no-self-vote rules, never
+  surfaced per-ballot in `CaptainResultsTab`'s UI (`ElectionDetail` in
+  `CaptainsTab.tsx`).
+- **Data**: two new tables, `captainElections` (one row per voting round —
+  `candidatePlayerIds` is a snapshot of JV's confirmed `rosterCandidates`
+  taken when the election opens, same snapshot pattern as `Game`/
+  `Practice.rosterPlayerIds`, so later roster edits don't retroactively
+  change who an in-progress/past election could vote for) and
+  `captainBallots` (one row per submitted ballot — `rankings: jsonb` holds
+  1-3 `{playerId, rank, reasons}` entries, `qualities: text[]` holds the
+  general checklist answer). Same allow-all-for-`anon` RLS + realtime
+  pattern as every other table. Scoring is a simple Borda count (1st = 3pts,
+  2nd = 2, 3rd = 1, `RANK_POINTS` in `captainVoting.ts`) — deliberately not
+  full instant-runoff, which would be overkill for ~10 players.
+- **A separate login from the coach's**: `login_codes` gained a new row,
+  role `jv_captain_vote` (own password, `verify_login` RPC reused as-is —
+  its `p_role` column is plain text, not constrained to `Team`, so this
+  works without a DB or RPC change). `lib/auth.ts`'s `verifyLogin(team, …)`
+  is now a thin wrapper over a new `verifyRoleLogin(role: string, …)` so
+  both the coach and player logins share one implementation.
+- **A separate route from the coach's app**: no router library in this
+  project, and GitHub Pages' static hosting can't do server-side rewrites
+  for a real path-based route, so `main.tsx` checks
+  `window.location.hash === '#vote'` at load (decided once, not reactive to
+  later hash changes) and renders `PlayerVoteApp` instead of `App` — a
+  `#vote` link the coach shares (shown/copyable from `CaptainsTab.tsx`)
+  opens the player flow; the bare URL still opens the normal coach app.
+  Session storage is intentionally separate too:
+  `src/features/captains/vote/voteAuth.ts` uses its own `localStorage` keys
+  (`vb-stats-vote-auth`/`vb-stats-vote-self`), never touching or touched by
+  the coach's `vb-stats-auth` (`lib/auth.ts`), even on the same device.
+- **Player flow** (`PlayerVoteApp.tsx` orchestrates): password gate
+  (`VoteLoginScreen.tsx`) → pick yourself from the roster
+  (`SelectSelfScreen.tsx`, list built from the open election's
+  `candidatePlayerIds`) → ballot (`BallotForm.tsx`) → "thanks for voting"
+  confirmation. `getSelfPlayerId()`/`setSelfPlayerId()` remember which
+  roster player a device last identified as, purely as a convenience (always
+  re-validated against the live roster before being trusted, and every
+  screen has a "Not you? Switch player" link) — not a security boundary,
+  since this app's whole auth model already has that ceiling (see Auth
+  section above). If no election is `status = 'open'` for JV, players see a
+  "no vote is open right now" message instead of a ballot.
+- **Coach flow** (`CaptainsTab.tsx`, a new Settings sub-tab): start a new
+  election (snapshots the roster, sets `status = 'open'`), see the
+  shareable `#vote` link, see live participation ("N of M voted" +
+  which roster players haven't yet — participation only, never ballot
+  content), close voting (`status = 'closed'`, reopenable), and view
+  results — ranked by points with 1st-place-vote counts and the aggregated
+  "why" reasons per candidate, plus a separate team-wide tally of the
+  "what matters in a captain" question. A past election stays selectable
+  from a dropdown, so election history isn't lost season to season.
+- **Not done / coach's call**: the shared vote password is only documented
+  here and set via the same SQL pattern as team role passwords
+  (`update login_codes set password_hash = crypt('newpassword',
+  gen_salt('bf')) where role = 'jv_captain_vote'`) — the seeded default is
+  `gocubbies`, change it before sharing the link with the team if a
+  different or more private password is wanted. Like every login in this
+  app, this is a "keep casual visitors out" gate, not real per-voter
+  security — see the Auth section's security ceiling note; a determined
+  actor with the anon key could still read `captainBallots` directly (just
+  not `login_codes`, which has zero read policies).
 
 ## Volleyball domain knowledge
 

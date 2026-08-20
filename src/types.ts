@@ -379,6 +379,52 @@ export interface PracticeDrillLog {
   updatedAt: string;         // ISO datetime
 }
 
+// ===== Captain voting =====
+// A player-facing ballot: JV's roster ranks their top 2-3 captain picks.
+// Distinct from every other feature above — the voter is a player, not the
+// coach, reached through a separate hash-routed entry point (`#vote`) and a
+// separate login (`login_codes` role `jv_captain_vote`), not the team-role
+// LoginScreen. See CaptainsTab.tsx (coach) and features/captains/vote/
+// (player flow).
+
+export type CaptainElectionStatus = 'open' | 'closed';
+
+// One voting round. candidatePlayerIds is a snapshot of the team's confirmed
+// roster taken when the election is opened (same pattern as Game/Practice's
+// rosterPlayerIds snapshot) — later roster edits don't retroactively change
+// who an in-progress or past election's ballots could vote for.
+export interface CaptainElection {
+  id: string;
+  team: Team;
+  title?: string;             // optional label, e.g. "2026 Fall Captains"
+  candidatePlayerIds: string[];
+  status: CaptainElectionStatus;
+  createdAt: string;          // ISO datetime
+  closedAt?: string;          // ISO datetime
+}
+
+// One ranked pick on a ballot, 1st/2nd/3rd choice.
+export interface CaptainVoteRanking {
+  playerId: string;
+  rank: 1 | 2 | 3;
+  reasons: string[];          // CAPTAIN_VOTE_REASONS values the voter checked for this pick
+}
+
+// One player's completed ballot — one per (electionId, voterId), enforced by
+// a DB unique constraint so a player can't vote twice. voterId exists only
+// to enforce that (and to block self-votes client-side) — the coach-facing
+// results view (CaptainResultsTab) only ever shows aggregated tallies, never
+// a per-ballot breakdown by voter. See captainVoting.ts's CAPTAIN_QUALITIES
+// for the `qualities` checklist values and CAPTAIN_VOTE_REASONS for `reasons`.
+export interface CaptainBallot {
+  id: string;
+  electionId: string;
+  voterId: string;
+  qualities: string[];        // "what matters most to you in a captain" — asked once per ballot
+  rankings: CaptainVoteRanking[]; // 2-3 entries, rank 1 and 2 required, 3 optional
+  submittedAt: string;        // ISO datetime
+}
+
 // ===== Growth tracking =====
 // Just reuse SkillScore with sessionType filtered — no separate table needed.
 // Growth report = SkillScore[] grouped by playerId + skill, sorted by scoredAt.

@@ -606,11 +606,78 @@ everything rotation-specific:
   `rotation`) so `PracticeTrackTab` reuses them as-is; the rotation-aware
   functions (`computeAssistCredits`, `buildRotation*`) stayed
   `GameStatEvent`-only since they're meaningless without a lineup.
-- **No dedicated per-practice Insights tab** — not built, since it wasn't
-  asked for and the live running counts on every stat button already cover
-  the in-the-moment need. Cross-session insights for one player over time
-  *are* covered, though — see "Player Insights" below, which now includes
-  practice data alongside games with a source filter.
+- **Cross-session insights for one player over time** are covered by
+  "Player Insights" below (practice data alongside games, with a source
+  filter) — distinct from the per-practice Summary tab here, which is
+  about one day's practice, not one player across many.
+
+### Practice plans, the drill catalog, and per-practice Summary
+
+`PracticeDetailScreen.tsx` has three sub-tabs — **Plan / Track / Summary**
+— mirroring `GameDetailScreen`'s sub-tab pattern. This is a materially
+bigger feature than the original stat-tracking-only Practice tab described
+above; the bullets above about `PracticeStatEvent`'s shape, no-rotation
+design, and shared `statButtons.tsx` building blocks all still hold.
+
+- **`drills` table / `PracticeDrill`**: a global (not team-scoped) reusable
+  drill catalog — `id`/`name`/`description?`/`focusSkill?` (optional,
+  reuses the tryout `Skill` taxonomy purely as a label, e.g. "Serve Receive
+  Passing")/`createdAt`. Same allow-all RLS + realtime pattern as every
+  other table. **Distinct from the legacy unused `Drill`/`PracticePlan`
+  scaffold** in `types.ts` (predates any real practice-tracking feature,
+  never had a DB table, `sessionId`-keyed instead of `practiceId`-keyed) —
+  don't confuse the two; `PracticeDrill` is the real implementation.
+  `createDrill()` (exported from `DrillCatalogScreen.tsx`) is the one
+  insert path, reused by both that screen's "+ New Drill" form and the
+  Plan tab's inline quick-create so a coach never has to leave the plan
+  they're building to add a drill that doesn't exist yet.
+- **`DrillCatalogScreen.tsx`** (reached via a "🗂 Drills" button on
+  `PracticeScreen.tsx`, next to "+ New Practice"): search/browse every
+  drill, create new ones. Tapping a drill opens **`DrillDetailScreen.tsx`**
+  — the "historical catalog of previous stats from that drill": an
+  all-time aggregate (`buildAggregateStatLine` over every
+  `practiceStatEvent` with that `drillId`, across every practice, any
+  team) plus a by-practice breakdown table, same visual pattern as Player
+  Insights' by-session table.
+- **`Practice.drillIds: string[]`**: the day's plan — an ordered list of
+  catalog drill ids, stored directly on the practice row (same pattern as
+  `rosterPlayerIds`, not a join table). Managed by **`PracticePlanTab.tsx`**:
+  add from the catalog (search existing or quick-create new, both funnel
+  through `createDrill()`) or remove; reorder with ↑/↓ buttons rather than
+  drag-and-drop — consistent with the Lineup Simulator's tap-to-place
+  precedent of avoiding drag interactions on mobile.
+- **Drill-scoped stat-taking**: `PracticeStatEvent.drillId?: string`
+  (undefined = "General", i.e. no drill selected — what every tap recorded
+  before this feature existed, and any tap made outside a specific drill,
+  reads back as). `PracticeTrackTab.tsx` shows a "Tracking for" chip strip
+  above the roster (General + each planned drill in `drillIds` order);
+  whichever chip is selected is written onto every new tap and also
+  **filters which taps the on-screen counts reflect** (`scopedEvents` in
+  that file) — so a card's Kill/Error/SR numbers mean "reps in this drill
+  today," not the whole practice's running total. **Undo and the Recent
+  log are deliberately NOT scoped** — they always operate over every event
+  in the practice regardless of the selected chip, since correcting the
+  literal last tap (or any past one) shouldn't depend on which drill
+  happens to be selected right now. The Recent log shows the drill name
+  per row (or nothing, for General) so corrections are unambiguous.
+- **`PracticeSummaryTab.tsx` / `practiceSummary.ts`**: the post-practice
+  summary, **rule-based/computed, not a real AI/LLM call** — same framing
+  as `GameInsightsTab` (explicit "Computed from today's taps" label in the
+  UI). `buildPracticeSummary()` produces: (1) a totals line (stats logged,
+  players involved, drills tracked), (2) player-level ✅/👀 flags via the
+  existing `buildInsights()` fed today's per-player lines, (3) a by-drill
+  breakdown — each planned drill actually used today gets its own
+  aggregate line (`buildAggregateStatLine`, the new team/group-level
+  sibling of `buildPlayerStatLine` added to `gameStats.ts` — same math,
+  no single `player` attached) **plus a comparison against that drill's
+  history** (every `practiceStatEvent` with that `drillId` from every
+  *other* practice) when there's enough historical volume (≥3 attempts or
+  ≥3 SR taps) and the swing clears a threshold (15 hitting-% points, or
+  0.4 on the SR scale) — e.g. "Hitting 60% today vs. 35% historically in
+  this drill (up 25 pts)." A real LLM-generated summary was considered and
+  explicitly declined in favor of this (see "Things NOT done" — same
+  reasoning as Game Day's Insights tab: no Edge Function/API key
+  plumbed in, and the coach confirmed rule-based was preferred for now).
 
 ## Player Insights
 
@@ -693,9 +760,18 @@ access control for minors' data) that are the coach's call, not assumed.
 - `Note`/`Lineup`/`StatEvent`/`Drill`/`PracticePlan` types are an early
   scaffold, still unused (no UI or DB tables) — superseded, not replaced,
   by the actual Game Day feature above (`Game`/`GameLineup`/`GameStatEvent`
-  types, `games`/`gameLineups`/`gameStatEvents` tables). Don't confuse
-  either of these with `SavedLineup`/`lineups` (the Lineup Simulator's
-  separate pre-game scratchpad).
+  types, `games`/`gameLineups`/`gameStatEvents` tables) and, for the
+  `Drill`/`PracticePlan` half specifically, by `PracticeDrill`/
+  `Practice.drillIds` (see "Practice plans, the drill catalog, and
+  per-practice Summary" under Practice). Don't confuse either of these
+  with `SavedLineup`/`lineups` (the Lineup Simulator's separate pre-game
+  scratchpad).
+- Practice's post-practice Summary is rule-based/computed, not a real
+  AI/LLM call — same tradeoff as Game Day's Insights tab (a real Claude-
+  generated summary would need a Supabase Edge Function + Anthropic API
+  key, which can't live in this static site's client bundle). Asked about
+  directly and the coach confirmed rule-based for now; revisit if that
+  changes.
 - Game Day is a deliberately simplified slice of `docs/volleyball-domain-
   knowledge.md`'s full design brief, built fast to pilot at a scrimmage —
   it does NOT implement: best-of-3/5 set/match structure or win

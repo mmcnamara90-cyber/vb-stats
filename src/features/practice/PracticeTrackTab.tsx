@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
-import type { Practice, PracticeStatEvent, PracticeStatType, Player } from '../../types';
+import type { Practice, PracticeDrill, PracticeStatEvent, PracticeStatType, Player } from '../../types';
 import { PositionBadges } from '../tryouts/PositionBadges';
 import { GAME_STAT_LABELS, countEvents, serveReceiveAverage, statRolesForPositions } from '../games/gameStats';
 import { SR_RATINGS, SR_RATING_COLOR_CLASSES, StatButton } from '../games/statButtons';
@@ -46,6 +46,9 @@ function readStoredMobileCategory(): MobileCategory {
 export function PracticeTrackTab({ practice }: { practice: Practice }) {
   const [mobileView, setMobileView] = useState(readStoredMobileView);
   const [mobileCategory, setMobileCategory] = useState<MobileCategory>(readStoredMobileCategory);
+  // null = "General" (no drill selected) — the default, and what every tap
+  // recorded before this feature existed reads back as.
+  const [selectedDrillId, setSelectedDrillId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -74,14 +77,28 @@ export function PracticeTrackTab({ practice }: { practice: Practice }) {
       .order('createdAt', { ascending: false });
     return (data as PracticeStatEvent[]) ?? [];
   }, [practice.id]);
+  const drills = useLiveQuery(async () => {
+    if (practice.drillIds.length === 0) return [];
+    const { data } = await supabase.from('drills').select('*').in('id', practice.drillIds);
+    return (data as PracticeDrill[]) ?? [];
+  }, [practice.drillIds.join(',')]);
 
-  if (players === undefined || events === undefined) return <p className="text-gray-500">Loading…</p>;
+  if (players === undefined || events === undefined || drills === undefined) return <p className="text-gray-500">Loading…</p>;
 
   const playersById = new Map(players.map((p) => [p.id, p]));
+  const drillsById = new Map(drills.map((d) => [d.id, d]));
+  const plannedDrills = practice.drillIds.map((id) => drillsById.get(id)).filter((d): d is PracticeDrill => !!d);
   const rosterPlayers = practice.rosterPlayerIds
     .map((id) => playersById.get(id))
     .filter((p): p is Player => !!p)
     .sort((a, b) => a.firstName.localeCompare(b.firstName));
+
+  // Card counts/mobile list scope to whichever drill is selected (or
+  // "General" — taps with no drill) so the numbers on screen mean "reps in
+  // this drill today," not the whole practice's running total. Undo and the
+  // Recent log stay unscoped — correcting the literal last tap (or any past
+  // one) shouldn't depend on which drill happens to be selected right now.
+  const scopedEvents = events.filter((e) => (e.drillId ?? null) === selectedDrillId);
 
   async function recordStat(playerId: string, statType: PracticeStatType, value?: number) {
     const event: PracticeStatEvent = {
@@ -90,6 +107,7 @@ export function PracticeTrackTab({ practice }: { practice: Practice }) {
       playerId,
       statType,
       value,
+      drillId: selectedDrillId ?? undefined,
       createdAt: new Date().toISOString(),
     };
     await supabase.from('practiceStatEvents').insert(event);
@@ -101,6 +119,7 @@ export function PracticeTrackTab({ practice }: { practice: Practice }) {
 
   const lastEvent = events[0];
   const lastEventPlayer = lastEvent ? playersById.get(lastEvent.playerId) : undefined;
+  const lastEventDrill = lastEvent?.drillId ? drillsById.get(lastEvent.drillId) : undefined;
 
   if (rosterPlayers.length === 0) {
     return <p className="text-sm text-gray-500">No players on this practice's roster.</p>;
@@ -108,6 +127,35 @@ export function PracticeTrackTab({ practice }: { practice: Practice }) {
 
   return (
     <div>
+      {plannedDrills.length > 0 && (
+        <div className="mb-3">
+          <div className="text-xs font-medium text-gray-500 mb-1.5">Tracking for</div>
+          <div className="flex gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setSelectedDrillId(null)}
+              className={`min-h-9 px-3 rounded-lg text-xs font-medium border ${
+                selectedDrillId === null ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
+              }`}
+            >
+              General
+            </button>
+            {plannedDrills.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setSelectedDrillId(d.id)}
+                className={`min-h-9 px-3 rounded-lg text-xs font-medium border ${
+                  selectedDrillId === d.id ? 'bg-brand-indigo text-white border-brand-indigo' : 'bg-white text-gray-700 border-gray-300'
+                }`}
+              >
+                {d.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <button
           type="button"
@@ -143,26 +191,26 @@ export function PracticeTrackTab({ practice }: { practice: Practice }) {
         className="min-h-11 w-full mb-4 rounded-lg border-2 border-amber-400 bg-amber-100 text-amber-900 text-sm font-semibold active:bg-amber-200 disabled:opacity-40 disabled:border-gray-300 disabled:bg-gray-100 disabled:text-gray-400"
       >
         {lastEvent
-          ? `↩ Undo last: ${GAME_STAT_LABELS[lastEvent.statType]}${lastEvent.value != null ? ` (${lastEvent.value})` : ''} — ${lastEventPlayer ? `${lastEventPlayer.firstName} ${lastEventPlayer.lastName}` : 'Unknown'}`
+          ? `↩ Undo last: ${GAME_STAT_LABELS[lastEvent.statType]}${lastEvent.value != null ? ` (${lastEvent.value})` : ''} — ${lastEventPlayer ? `${lastEventPlayer.firstName} ${lastEventPlayer.lastName}` : 'Unknown'}${lastEventDrill ? ` (${lastEventDrill.name})` : ''}`
           : '↩ Undo last (nothing recorded yet)'}
       </button>
 
       {mobileView ? (
         <PracticeMobileList
           players={rosterPlayers}
-          events={events}
+          events={scopedEvents}
           category={mobileCategory}
           onRecord={recordStat}
         />
       ) : (
         <div className="grid grid-cols-2 gap-2 mb-4">
           {rosterPlayers.map((player) => (
-            <PracticeStatCard key={player.id} player={player} events={events} onRecord={(t, v) => recordStat(player.id, t, v)} />
+            <PracticeStatCard key={player.id} player={player} events={scopedEvents} onRecord={(t, v) => recordStat(player.id, t, v)} />
           ))}
         </div>
       )}
 
-      {!mobileView && <RecentEvents events={events.slice(0, 15)} playersById={playersById} onUndo={undoEvent} />}
+      {!mobileView && <RecentEvents events={events.slice(0, 15)} playersById={playersById} drillsById={drillsById} onUndo={undoEvent} />}
     </div>
   );
 }
@@ -353,10 +401,12 @@ function PracticeMobileRow({
 function RecentEvents({
   events,
   playersById,
+  drillsById,
   onUndo,
 }: {
   events: PracticeStatEvent[];
   playersById: Map<string, Player>;
+  drillsById: Map<string, PracticeDrill>;
   onUndo: (id: string) => void;
 }) {
   if (events.length === 0) return null;
@@ -366,11 +416,13 @@ function RecentEvents({
       <ul className="divide-y divide-gray-100">
         {events.map((e) => {
           const p = playersById.get(e.playerId);
+          const drill = e.drillId ? drillsById.get(e.drillId) : undefined;
           return (
             <li key={e.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
               <span className="text-gray-700">
                 {p ? `${p.firstName} ${p.lastName}` : 'Unknown'} — {GAME_STAT_LABELS[e.statType]}
                 {e.value != null ? ` (${e.value})` : ''}
+                {drill && <span className="text-gray-400"> · {drill.name}</span>}
               </span>
               <button
                 type="button"

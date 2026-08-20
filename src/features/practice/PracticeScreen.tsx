@@ -4,6 +4,7 @@ import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Practice, RosterCandidate, Team } from '../../types';
 import { TEAM_LABELS } from '../tryouts/teams';
 import { PracticeDetailScreen } from './PracticeDetailScreen';
+import { DrillCatalogScreen } from './DrillCatalogScreen';
 
 const inputClass =
   'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base focus:border-brand-indigo focus:outline-none';
@@ -17,19 +18,32 @@ const team: Team = 'jv';
 export function PracticeScreen() {
   const [selectedPracticeId, setSelectedPracticeId] = useState<string | null>(null);
   const [showNewPractice, setShowNewPractice] = useState(false);
+  const [showDrillCatalog, setShowDrillCatalog] = useState(false);
 
   const practices = useLiveQuery(async () => {
     const { data } = await supabase.from('practices').select('*').eq('team', team).order('date', { ascending: false });
     return (data as Practice[]) ?? [];
   }, []);
 
+  if (showDrillCatalog) {
+    return <DrillCatalogScreen onBack={() => setShowDrillCatalog(false)} />;
+  }
   if (selectedPracticeId) {
     return <PracticeDetailScreen practiceId={selectedPracticeId} onBack={() => setSelectedPracticeId(null)} />;
   }
 
   return (
     <div className="max-w-2xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">🏃 Practice</h1>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <h1 className="text-2xl font-bold">🏃 Practice</h1>
+        <button
+          type="button"
+          onClick={() => setShowDrillCatalog(true)}
+          className="min-h-9 px-3 rounded-lg border border-gray-300 text-sm font-medium text-gray-700"
+        >
+          🗂 Drills
+        </button>
+      </div>
 
       {showNewPractice ? (
         <NewPracticeForm
@@ -105,6 +119,7 @@ function NewPracticeForm({
       date,
       label: label.trim(),
       rosterPlayerIds,
+      drillIds: [],
       createdAt: new Date().toISOString(),
     };
     await supabase.from('practices').insert(practice);

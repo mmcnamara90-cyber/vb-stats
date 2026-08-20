@@ -322,6 +322,7 @@ export interface Practice {
   date: string;             // ISO date
   label: string;            // e.g. "Practice", "Scrimmage" — free text, defaults to "Practice"
   rosterPlayerIds: string[]; // snapshotted from confirmed rosterCandidates at creation
+  drillIds: string[];        // this practice's plan — ordered PracticeDrill ids, see "Plan" tab
   createdAt: string;        // ISO datetime
 }
 
@@ -335,6 +336,22 @@ export interface PracticeStatEvent {
   playerId: string;
   statType: PracticeStatType;
   value?: number;           // 0-3 rating, serve_receive only
+  drillId?: string;          // which PracticeDrill this tap happened during; undefined = "General" (no drill selected)
+  createdAt: string;        // ISO datetime
+}
+
+// A reusable, named drill in the practice catalog — e.g. "Line Passing" or
+// "Queens of the Court". Global, not team-scoped (mirrors TryoutDrill).
+// Distinct from the legacy `Drill`/`PracticePlan` scaffold below: those
+// predate any real practice-tracking feature and were never wired to a DB
+// table; this is the actual implementation, built against `Practice.drillIds`
+// (the day's plan) and `PracticeStatEvent.drillId` (which drill a tap
+// happened during) instead of `sessionId`/`focusSkills[]`/`durationMinutes`.
+export interface PracticeDrill {
+  id: string;
+  name: string;
+  description?: string;
+  focusSkill?: Skill;        // optional — reuses the tryout Skill taxonomy, shown as a badge
   createdAt: string;        // ISO datetime
 }
 
@@ -342,7 +359,10 @@ export interface PracticeStatEvent {
 // Just reuse SkillScore with sessionType filtered — no separate table needed.
 // Growth report = SkillScore[] grouped by playerId + skill, sorted by scoredAt.
 
-// ===== Practice planning (Phase 5, lower priority — define later) =====
+// ===== Early scaffold, still unused — superseded by PracticeDrill above =====
+// Never wired to a DB table (sessionId refers to the old Session type, which
+// also has no table). Kept only so nothing that referenced it historically
+// breaks; don't build against this — use PracticeDrill/Practice.drillIds.
 export interface Drill {
   id: string;
   name: string;

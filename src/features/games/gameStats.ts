@@ -77,6 +77,39 @@ export interface PlayerGameStatLine {
   settingConversionPct?: number; // assists / setAttempts — historical only
 }
 
+// A team/group-level line with the same math as PlayerGameStatLine but no
+// single `player` attached — used for drill- or practice-level rollups
+// (e.g. "how did the whole group hit in this drill today") where the
+// events passed in are already scoped to whatever group is being summarized,
+// rather than filtered down to one player's own taps.
+export interface AggregateStatLine {
+  attackAttempts: number;
+  kills: number;
+  attackErrors: number;
+  hittingPct?: number;
+  serveReceiveAvg?: number;
+  serveReceiveCount: number;
+  assists: number;
+}
+
+export function buildAggregateStatLine(events: MinimalStatEvent[]): AggregateStatLine {
+  const attackAttempts = events.filter((e) => e.statType === 'attack_attempt').length;
+  const kills = events.filter((e) => e.statType === 'kill').length;
+  const attackErrors = events.filter((e) => e.statType === 'attack_error').length;
+  const assists = events.filter((e) => e.statType === 'assist').length;
+  const srTaps = events.filter((e) => e.statType === 'serve_receive' && e.value != null);
+
+  return {
+    attackAttempts,
+    kills,
+    attackErrors,
+    hittingPct: attackAttempts > 0 ? (kills - attackErrors) / attackAttempts : undefined,
+    serveReceiveAvg: srTaps.length > 0 ? srTaps.reduce((s, e) => s + (e.value ?? 0), 0) / srTaps.length : undefined,
+    serveReceiveCount: srTaps.length,
+    assists,
+  };
+}
+
 export function buildPlayerStatLine(player: Player, events: MinimalStatEvent[]): PlayerGameStatLine {
   const playerEvents = events.filter((e) => e.playerId === player.id);
   const attackAttempts = playerEvents.filter((e) => e.statType === 'attack_attempt').length;

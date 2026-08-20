@@ -5,7 +5,14 @@ import { PlayerInsightsScreen } from './features/insights/PlayerInsightsScreen';
 import { SettingsScreen } from './features/settings/SettingsScreen';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { clearStoredTeam, getStoredTeam, setStoredTeam } from './lib/auth';
+import { applySiteTheme, applyStatTheme, readStoredSiteTheme, readStoredStatTheme } from './lib/uiTheme';
 import type { Team } from './types';
+
+// Applied once at module load (before first paint) rather than in a
+// useEffect, so a returning coach doesn't see a flash of the default theme
+// before their saved preference kicks in.
+applySiteTheme(readStoredSiteTheme());
+applyStatTheme(readStoredStatTheme());
 
 // Game Day is the day-to-day screen, so it's the default/main tab now.
 // Roster / Tryouts / Roster Builder are occasional admin/setup work —

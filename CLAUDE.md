@@ -24,6 +24,48 @@ the Game Day Live tab's stat-quality color coding (kill/error green/red, the
 serve-receive/serve 0-3 gradient, amber warnings), which is tuned for fast
 scanning during live play and is a functional/semantic system, not branding.
 
+### Runtime-swappable themes
+
+Both the brand palette above and the stat-quality color coding are now
+swappable at runtime, toggled from Settings → Preferences ("Site look" /
+"Stat colors") and stored per-device in `localStorage` (not synced to
+Supabase — this is a look preference, not shared coaching data). See
+`src/lib/uiTheme.ts` for the read/apply helpers and constants
+(`SITE_THEMES`, `STAT_THEMES`).
+
+- **Mechanism**: each `--color-brand-*` / `--color-stat-*` token in
+  `@theme` (`src/index.css`) is defined as `var(--brand-*)` /
+  `var(--stat-*)` indirection rather than a literal hex — Tailwind only
+  needs the token to exist at build time to compile e.g. `bg-brand-indigo`
+  into `background-color: var(--color-brand-indigo)`, and that keeps
+  resolving live as the underlying custom property changes. The actual
+  color values live in `:root` (defaults) and in `[data-site-theme='ocean']`
+  / `[data-stat-theme='colorblind']` override blocks. `applySiteTheme`/
+  `applyStatTheme` just set `document.documentElement.dataset.siteTheme` /
+  `.statTheme`, which is what selects the override block. **Don't flatten
+  any of these back to a literal hex value** in a component or in `@theme`
+  — that silently breaks the toggle for that one spot. Applied once at
+  `App.tsx` module load (not inside a `useEffect`) so a returning coach
+  doesn't see a flash of the default theme before their saved preference
+  applies.
+- **Site look**: `default` (the palette above) or `ocean` (`#1b4965`
+  primary / `#14374d` dark, with lime/cyan/rose/tomato repointed to mint/
+  sand/coral/seafoam respectively — same four "accent" roles, different
+  hues). Only these two exist right now; the mechanism supports adding
+  more `[data-site-theme='…']` blocks later.
+- **Stat colors**: `classic` (the red→orange→amber→green stoplight live
+  today) or `colorblind` (blue/orange scale — sky blue = good, burnt
+  orange = bad — chosen to stay distinguishable for red-green
+  colorblindness). Scoped specifically to `src/features/games/
+  statButtons.tsx`'s `SR_RATING_COLOR_CLASSES` and `StatButton`'s
+  green/red — i.e. the serve-receive/serve 0-3 squares and Kill/Error
+  buttons on both Game Day Live and Practice (they already shared this one
+  file). Deliberately does **not** touch the separate amber
+  warning/conflict banners (sub/libero conflict, GameInsightsTab's
+  good/watch panels) or the Tryouts `ScoreTab`'s 0-3 buttons
+  (`RosterBuilderTab.tsx`) — different convention, out of scope unless
+  asked.
+
 ## Deployment
 
 - **Repo**: https://github.com/mmcnamara90-cyber/vb-stats (branch `main`)
@@ -169,7 +211,12 @@ re-entering the same choices every game.
     new game is created (`NewGameForm` in `GameDayScreen.tsx`), alongside
     the team's confirmed `rosterCandidates` — e.g. the 1-5 Varsity players
     who regularly play up, so they don't need re-adding every game. Still
-    editable per-game afterward from the Roster tab as before.
+    editable per-game afterward from the Roster tab as before. This same
+    union (confirmed roster + default call-ups) is also "the 15" that
+    Player Insights' roster grid shows (see that section).
+  - **Site look / Stat colors**: device-local theme toggles, not part of
+    `teamSettings` (not synced/shared) — see "Runtime-swappable themes"
+    under Brand palette above.
   - **Gotcha already hit once, worth knowing**: `GameLineupTab.tsx`'s
     `workingLineup` used to lazily build its initial phantom lineup (and
     therefore its pre-filled libero slots) synchronously at mount, in the

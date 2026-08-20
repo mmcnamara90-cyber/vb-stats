@@ -1,15 +1,100 @@
 @import "tailwindcss";
 
-/* Brand palette — see CLAUDE.md for the source swatch. Used for
-   primary/selected/active UI (nav, buttons, selected pills); deliberately
-   NOT applied to the Game Day Live tab's stat-quality color coding
-   (kill/error/serve-receive greens/reds/ambers), which is tuned for fast
-   scanning during live play, not branding. */
+/* ===== Runtime-swappable palettes =====
+   Two independent theme layers, each a plain CSS custom property swapped by
+   a data-attribute on <html> (see src/lib/siteTheme.ts / statTheme.ts) and
+   read back into Tailwind v4's @theme tokens below via var() indirection —
+   Tailwind only needs the token to exist at build time, so the compiled
+   utility (e.g. `bg-brand-indigo`) just emits `background-color:
+   var(--color-brand-indigo)`, which keeps resolving live as the underlying
+   --brand-* / --stat-* custom property changes. Don't flatten these back to
+   literal hex values in @theme — that's what makes the Settings toggles
+   work without a rebuild. */
+
+/* --- Site-wide brand palette (nav/buttons/selected pills) — toggled via
+   Settings > Preferences > "Site look". Deliberately NOT applied to the
+   stat-quality color coding below, which is its own swappable system. --- */
+:root {
+  --brand-indigo: #222e50;
+  --brand-indigo-dark: #19233d;
+  --brand-lime: #e0ff4f;
+  --brand-cyan: #9cfffa;
+  --brand-rose: #ff70a6;
+  --brand-tomato: #f55d3e;
+}
+[data-site-theme='ocean'] {
+  --brand-indigo: #1b4965;
+  --brand-indigo-dark: #14374d;
+  --brand-lime: #bee9e8; /* mint */
+  --brand-cyan: #cae9ff; /* sand */
+  --brand-rose: #ff8c61; /* coral */
+  --brand-tomato: #62b6cb; /* seafoam */
+}
+
+/* --- Game Day / Practice stat-quality color coding (serve-receive/serve
+   0-3 gradient, Kill/Error buttons) — toggled via Settings > Preferences >
+   "Stat colors". Each rating has a base + "-active" (tap/hover) shade, plus
+   an "-fg" text color since a light background (e.g. the classic amber-4)
+   needs dark text while the others need white. --- */
+:root {
+  --stat-sr0: #e11d48;
+  --stat-sr0-active: #be123c;
+  --stat-sr0-fg: #ffffff;
+  --stat-sr1: #f97316;
+  --stat-sr1-active: #ea580c;
+  --stat-sr1-fg: #ffffff;
+  --stat-sr2: #fbbf24;
+  --stat-sr2-active: #f59e0b;
+  --stat-sr2-fg: #111827;
+  --stat-sr3: #059669;
+  --stat-sr3-active: #047857;
+  --stat-sr3-fg: #ffffff;
+  --stat-kill: #059669;
+  --stat-kill-active: #047857;
+  --stat-error: #e11d48;
+  --stat-error-active: #be123c;
+}
+[data-stat-theme='colorblind'] {
+  --stat-sr0: #c2410c;
+  --stat-sr0-active: #9a3412;
+  --stat-sr0-fg: #ffffff;
+  --stat-sr1: #fb923c;
+  --stat-sr1-active: #f97316;
+  --stat-sr1-fg: #ffffff;
+  --stat-sr2: #7dd3fc;
+  --stat-sr2-active: #38bdf8;
+  --stat-sr2-fg: #0c4a6e;
+  --stat-sr3: #0369a1;
+  --stat-sr3-active: #075985;
+  --stat-sr3-fg: #ffffff;
+  --stat-kill: #0369a1;
+  --stat-kill-active: #075985;
+  --stat-error: #c2410c;
+  --stat-error-active: #9a3412;
+}
+
 @theme {
-  --color-brand-indigo: #222e50;
-  --color-brand-indigo-dark: #19233d;
-  --color-brand-lime: #e0ff4f;
-  --color-brand-cyan: #9cfffa;
-  --color-brand-rose: #ff70a6;
-  --color-brand-tomato: #f55d3e;
+  --color-brand-indigo: var(--brand-indigo);
+  --color-brand-indigo-dark: var(--brand-indigo-dark);
+  --color-brand-lime: var(--brand-lime);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-brand-rose: var(--brand-rose);
+  --color-brand-tomato: var(--brand-tomato);
+
+  --color-stat-sr0: var(--stat-sr0);
+  --color-stat-sr0-active: var(--stat-sr0-active);
+  --color-stat-sr0-fg: var(--stat-sr0-fg);
+  --color-stat-sr1: var(--stat-sr1);
+  --color-stat-sr1-active: var(--stat-sr1-active);
+  --color-stat-sr1-fg: var(--stat-sr1-fg);
+  --color-stat-sr2: var(--stat-sr2);
+  --color-stat-sr2-active: var(--stat-sr2-active);
+  --color-stat-sr2-fg: var(--stat-sr2-fg);
+  --color-stat-sr3: var(--stat-sr3);
+  --color-stat-sr3-active: var(--stat-sr3-active);
+  --color-stat-sr3-fg: var(--stat-sr3-fg);
+  --color-stat-kill: var(--stat-kill);
+  --color-stat-kill-active: var(--stat-kill-active);
+  --color-stat-error: var(--stat-error);
+  --color-stat-error-active: var(--stat-error-active);
 }

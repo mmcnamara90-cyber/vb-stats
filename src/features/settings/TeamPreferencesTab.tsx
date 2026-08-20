@@ -7,6 +7,16 @@ import { PlayerSearchInput } from '../roster/PlayerSearchInput';
 import { PositionBadges } from '../tryouts/PositionBadges';
 import { playerGradeLabel, matchesPlayerQuery } from '../../lib/playerSearch';
 import { defaultTeamSettings, saveTeamSettings } from './teamSettings';
+import {
+  applySiteTheme,
+  applyStatTheme,
+  readStoredSiteTheme,
+  readStoredStatTheme,
+  SITE_THEMES,
+  STAT_THEMES,
+  type SiteTheme,
+  type StatTheme,
+} from '../../lib/uiTheme';
 
 const pillClass = (active: boolean) =>
   `min-h-11 px-4 rounded-lg text-sm font-medium border ${
@@ -18,6 +28,8 @@ const team: Team = 'jv';
 
 export function TeamPreferencesTab() {
   const [search, setSearch] = useState('');
+  const [siteTheme, setSiteTheme] = useState<SiteTheme>(readStoredSiteTheme);
+  const [statTheme, setStatTheme] = useState<StatTheme>(readStoredStatTheme);
 
   const settingsRows = useLiveQuery(async () => {
     const { data } = await supabase.from('teamSettings').select('*');
@@ -87,6 +99,49 @@ export function TeamPreferencesTab() {
         </div>
         <p className="text-xs text-gray-400 mt-1.5">
           New game lineups start with this many blank libero slots already added on the Lineup tab, ready to fill in.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 p-3 mb-4">
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">Site look</label>
+        <div className="flex gap-2 mb-3">
+          {SITE_THEMES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                setSiteTheme(t.id);
+                applySiteTheme(t.id);
+              }}
+              className={pillClass(siteTheme === t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mb-3">
+          Nav bar, buttons, and selected pills. Applies instantly and remembers your choice on this device.
+        </p>
+
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">Stat colors</label>
+        <div className="flex gap-2">
+          {STAT_THEMES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                setStatTheme(t.id);
+                applyStatTheme(t.id);
+              }}
+              className={pillClass(statTheme === t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mt-1.5">
+          The serve-receive 0-3 squares and Kill/Error buttons on Game Day and Practice. "Colorblind-Safe" swaps the
+          red/green stoplight for a blue/orange scale.
         </p>
       </div>
 

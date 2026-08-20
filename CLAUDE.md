@@ -887,9 +887,8 @@ in `CaptainsTab.tsx` and `PlayerVoteApp.tsx`).
 - **Not done / coach's call**: the shared vote password is only documented
   here and set via the same SQL pattern as team role passwords
   (`update login_codes set password_hash = crypt('newpassword',
-  gen_salt('bf')) where role = 'jv_captain_vote'`) — the seeded default is
-  `gocubbies`, change it before sharing the link with the team if a
-  different or more private password is wanted. Like every login in this
+  gen_salt('bf')) where role = 'jv_captain_vote'`) — currently `rebels`
+  (seeded as `gocubbies`, changed by the coach). Like every login in this
   app, this is a "keep casual visitors out" gate, not real per-voter
   security — see the Auth section's security ceiling note; a determined
   actor with the anon key could still read `captainBallots` directly (just

@@ -355,6 +355,30 @@ export interface PracticeDrill {
   createdAt: string;        // ISO datetime
 }
 
+export type DrillPayoff = 'high' | 'medium' | 'low';
+
+// How one specific drill went in one specific practice — separate from
+// PracticeDrill (the reusable catalog entry) the same way GameLineup is
+// separate from Game: PracticeDrill describes the drill in general,
+// PracticeDrillLog describes today's run of it. One row per
+// (practiceId, drillId) pair, id deterministically `${practiceId}:${drillId}`
+// (same pattern as PositionTarget's `${team}:${position}`) so saving is a
+// plain upsert-by-id, no separate unique constraint needed. All three
+// fields are optional and independently editable from the Plan tab at any
+// point before/during/after the drill — durationMinutes and payoff are also
+// exactly what a future real-AI summary would want as structured input
+// alongside the raw stat taps (see PracticeSummaryTab/practiceSummary.ts).
+export interface PracticeDrillLog {
+  id: string;
+  practiceId: string;
+  drillId: string;
+  durationMinutes?: number;
+  payoff?: DrillPayoff;
+  notes?: string;
+  followUp: boolean;         // "flag this drill for next practice" checkbox
+  updatedAt: string;         // ISO datetime
+}
+
 // ===== Growth tracking =====
 // Just reuse SkillScore with sessionType filtered — no separate table needed.
 // Growth report = SkillScore[] grouped by playerId + skill, sorted by scoredAt.

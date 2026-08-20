@@ -537,7 +537,39 @@ sub-tabs) once a game is selected.
     `PlayerGameStatLine.assists` from `buildPlayerStatLine` alone is the
     *raw explicit-tap* count — callers that want the credit-adjusted total
     (GameInsightsTab does) must override it with `computeAssistCredits()`'s
-    result, matching by player id.
+    result, matching by player id. **`buildInsights` is shared by all three
+    consumers** (this tab, Player Insights' aggregate line, and Practice's
+    Summary tab) — a fix here fixes it everywhere, and the same is true in
+    reverse.
+    - **Low-serve-receive wording is role- and team-aware, not a single
+      canned line.** It used to tell every player below the SR watch
+      threshold the same thing ("may need to be hidden in serve receive or
+      get extra passing reps") regardless of role or whether the roster
+      actually had anyone stronger to hide her behind — on a young/thin
+      roster that's often nobody, and it's simply not actionable for a
+      DS/Libero, since passing *is* her role, not a rotation she can be
+      hidden from. `buildInsights` now computes team context first (mean
+      SR avg across everyone with enough reps, and whether anyone clears
+      `GOOD_SR_AVG`), then per low-SR player picks one of three messages:
+      a DS/Libero-tagged, non-hitter player (`statRolesForPositions` —
+      "primary passer") gets a reps/technique message with no "hide"
+      language at all; a hitter/other role gets the "hide her or get
+      reps" suggestion *only* if a teammate is actually passing well
+      *and* she's meaningfully below the team's own average
+      (`HIDE_SUGGESTION_DELTA_BELOW_TEAM`, 0.3) — i.e. only when hiding
+      her is a realistic lineup option; otherwise (nobody's clearly
+      stronger, or she's in line with everyone else) it's framed as
+      "extra reps, hiding isn't really an option." On top of the
+      per-player lines, one **team-level** note is appended when the
+      group's own SR average itself is at/below the watch threshold
+      (`teamSrAvg <= WATCH_SR_AVG`, ≥2 players with reps) — e.g. "Team is
+      passing 0.9 avg... likely worth a dedicated passing focus" — so a
+      genuinely team-wide passing problem reads as one practice-planning
+      note instead of the same complaint repeated on every card. Verified
+      against real practice data (a young JV roster where literally no
+      one cleared `GOOD_SR_AVG`): every player got the "no one to hide
+      behind" framing plus the single team note, not eight redundant
+      "hide her" suggestions.
   - 📈 Trending: `buildPlayerTrends`/`describePlayerTrend` — splits each
     player's *own* chronological taps (by `createdAt`) in half and compares
     early vs. late on whichever metric applies to their role (hitting/SR),
@@ -678,6 +710,48 @@ design, and shared `statButtons.tsx` building blocks all still hold.
   explicitly declined in favor of this (see "Things NOT done" — same
   reasoning as Game Day's Insights tab: no Edge Function/API key
   plumbed in, and the coach confirmed rule-based was preferred for now).
+- **`practiceDrillLogs` table / `PracticeDrillLog`**: how one specific
+  drill went in one specific practice — `durationMinutes?`/`payoff?`
+  (`'high' | 'medium' | 'low'`)/`notes?`/`followUp: boolean`. Separate
+  from `PracticeDrill` (the catalog entry, e.g. "Serve Receive" in
+  general) the same way `GameLineup` is separate from `Game` — one
+  describes the drill, the other describes today's run of it. **Id is
+  deterministic** — `` `${practiceId}:${drillId}` `` (`drillLogId()` in
+  `PracticePlanTab.tsx`, same pattern as `PositionTarget`'s
+  `` `${team}:${position}` ``) — so saving is always a plain upsert-by-id,
+  no separate unique constraint or lookup-then-insert-or-update dance.
+  - **Logged from the Plan tab**: each planned drill row has a "▸ Log
+    time / payoff / notes" toggle (`DrillLogEditor` in
+    `PracticePlanTab.tsx`) that expands to a minutes number input, three
+    payoff pills, a notes textarea, and a "🚩 Flag for follow-up" checkbox.
+    Payoff/follow-up save immediately on tap; duration/notes save
+    `onBlur`. **The editor seeds its local state from the existing log
+    once via a plain `useState` initializer, not an effect that resyncs
+    on every prop change** — deliberately, so a realtime refetch
+    triggered by something unrelated elsewhere in the app can't clobber
+    text the coach is mid-typing (same reasoning as `GameLineupTab`'s
+    `workingLineup` local-optimistic-state pattern, just for a plain form
+    instead of rapid taps). Don't add a `useEffect([log])` sync here.
+  - **Feeds both the Summary tab and the drill's history page**: a
+    drill's `DrillSummaryLine` (in `practiceSummary.ts`) now carries
+    `durationMinutes`/`payoff`/`notes`/`followUp` alongside its stat
+    line, and **a drill with a log but zero stat taps still shows up** —
+    `drillIds` for the summary is the union of "drills with taps today"
+    and "drills with a log today," not taps alone (a warm-up or
+    scrimmage block the coach logged but didn't tap individual stats for
+    still needs to appear). Two new practice-level insights (returned
+    separately from the per-player ones, as `practiceInsights`, and
+    rendered above them in `PracticeSummaryTab.tsx`): (1) when ≥40% of
+    today's *logged* minutes (`LOW_PAYOFF_TIME_SHARE`) were rated "low"
+    payoff, one note naming the total; (2) one note listing every drill
+    flagged for follow-up. `DrillDetailScreen.tsx`'s by-practice table
+    gained Min/Payoff columns (sourced the same union way — a practice
+    with only a log, no taps, still gets a row) and a "Coach notes"
+    list below it for any practice where notes were left. This is also
+    exactly the structured input (time/payoff/freeform notes) a future
+    real-AI summary would want alongside the raw taps — capturing it now
+    in the rule-based version means the data already exists if/when that
+    upgrade happens.
 
 ## Player Insights
 

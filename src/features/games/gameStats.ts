@@ -424,9 +424,28 @@ export function describePlayerTrend(t: PlayerTrend): string {
   return `${arrow} ${name} is ${verb} on setting conversion — ${(t.earlyValue * 100).toFixed(0)}% early vs. ${(t.lateValue * 100).toFixed(0)}% more recently.`;
 }
 
+// How far below the team's own SR average counts as "notably weaker" —
+// used to decide whether "hide her" is a realistic suggestion (only if
+// teammates are meaningfully stronger) rather than generic advice repeated
+// on every card regardless of whether anyone's actually available to cover.
+const HIDE_SUGGESTION_DELTA_BELOW_TEAM = 0.3;
+const MIN_SR_LINES_FOR_TEAM_NOTE = 2;
+
 export function buildInsights(lines: PlayerGameStatLine[]): Insight[] {
   const insights: Insight[] = [];
   const name = (l: PlayerGameStatLine) => `${l.player.firstName} ${l.player.lastName}`;
+
+  // Team-wide serve-receive context. Every low passer used to get the same
+  // "may need to be hidden in serve receive" line regardless of role or
+  // whether the roster actually has anyone better to hide her behind — on a
+  // small/young roster that's often nobody, and DS/Libero-tagged players
+  // can't be "hidden" from serve receive at all, since passing is their
+  // whole job. This context lets each low-SR player get advice that's
+  // actually actionable for them.
+  const srLines = lines.filter((l) => l.serveReceiveCount >= MIN_SR_TAPS && l.serveReceiveAvg != null);
+  const teamSrAvg =
+    srLines.length > 0 ? srLines.reduce((s, l) => s + (l.serveReceiveAvg ?? 0), 0) / srLines.length : undefined;
+  const strongPasserExists = srLines.some((l) => (l.serveReceiveAvg ?? 0) >= GOOD_SR_AVG);
 
   for (const l of lines) {
     if (l.attackAttempts >= MIN_ATTACK_ATTEMPTS && l.hittingPct != null) {
@@ -449,10 +468,34 @@ export function buildInsights(lines: PlayerGameStatLine[]): Insight[] {
           text: `${name(l)} is passing ${l.serveReceiveAvg.toFixed(1)} avg on serve receive (${l.serveReceiveCount} reps) — reliable option in the rotation.`,
         });
       } else if (l.serveReceiveAvg <= WATCH_SR_AVG) {
-        insights.push({
-          tone: 'watch',
-          text: `${name(l)} is passing ${l.serveReceiveAvg.toFixed(1)} avg on serve receive (${l.serveReceiveCount} reps) — may need to be hidden in serve receive or get extra passing reps.`,
-        });
+        const roles = statRolesForPositions(l.player.positions);
+        const isPrimaryPasser = roles.passer && !roles.hitter;
+        const meaningfullyBelowTeam =
+          teamSrAvg != null && teamSrAvg - l.serveReceiveAvg >= HIDE_SUGGESTION_DELTA_BELOW_TEAM;
+
+        if (isPrimaryPasser) {
+          // She's a DS/Libero — passing is the role, not a rotation to hide
+          // from. The fix is reps and technique, not lineup gymnastics.
+          insights.push({
+            tone: 'watch',
+            text: `${name(l)} is passing ${l.serveReceiveAvg.toFixed(1)} avg on serve receive (${l.serveReceiveCount} reps) — this is her primary role, so the move is targeted reps on platform/footwork, not trying to hide her.`,
+          });
+        } else if (strongPasserExists && meaningfullyBelowTeam) {
+          // A realistic "hide her" case: at least one teammate is passing
+          // well and this player is clearly behind the team's own average.
+          insights.push({
+            tone: 'watch',
+            text: `${name(l)} is passing ${l.serveReceiveAvg.toFixed(1)} avg on serve receive (${l.serveReceiveCount} reps) — worth hiding her in serve receive if the lineup allows it, or targeting extra reps.`,
+          });
+        } else {
+          // Nobody's clearly stronger to hide behind (or she's not far off
+          // the team's own average) — hiding isn't a real option, so don't
+          // suggest it.
+          insights.push({
+            tone: 'watch',
+            text: `${name(l)} is passing ${l.serveReceiveAvg.toFixed(1)} avg on serve receive (${l.serveReceiveCount} reps) — worth extra reps; the roster doesn't have a clearly stronger passer to lean on yet, so hiding isn't really an option.`,
+          });
+        }
       }
     }
     if (l.assists >= MIN_ASSISTS_FOR_CALLOUT) {
@@ -461,6 +504,16 @@ export function buildInsights(lines: PlayerGameStatLine[]): Insight[] {
         text: `${name(l)} is running the offense — ${l.assists} assists (kills off their sets) so far.`,
       });
     }
+  }
+
+  // One team-level note instead of repeating the same complaint on every
+  // card when the whole group is passing similarly low — that's a practice
+  // focus, not an individual problem.
+  if (teamSrAvg != null && teamSrAvg <= WATCH_SR_AVG && srLines.length >= MIN_SR_LINES_FOR_TEAM_NOTE) {
+    insights.push({
+      tone: 'watch',
+      text: `Team is passing ${teamSrAvg.toFixed(1)} avg on serve receive as a group (${srLines.length} players with reps) — likely worth a dedicated passing focus in practice rather than moving players around.`,
+    });
   }
 
   return insights;

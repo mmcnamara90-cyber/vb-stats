@@ -3,7 +3,12 @@ import { supabase } from '../../lib/supabaseClient';
 import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { CourtZone, Game, GameLineup, Player } from '../../types';
 import { computeEffectiveCourt } from './effectiveCourt';
-import { playerColorClass } from './lineupSheetColors';
+import {
+  computeRotationPairGroups,
+  pairGroupColorClass,
+  PAIR_GROUP_COLOR_CLASSES,
+  rotationPairLabels,
+} from './lineupSheetColors';
 
 const ZONE_GRID: CourtZone[][] = [
   [4, 3, 2], // front row, at the net
@@ -20,10 +25,12 @@ function playerLabel(p: Player | undefined): string {
 // hand off cleanly to someone who isn't going to click through the Lineup
 // tab's tap-to-edit UI (e.g. an assistant coach running the game solo).
 // Modeled directly on the coach's own hand-drawn sheet: one block per
-// rotation, court-shaped grid, a consistent color per player across every
-// block, libero/subs called out plainly, plus a freeform Notes box for
-// exactly the things that don't fit the structured lineup data (players
-// out, flexible/maybe subs, forward-looking reminders).
+// rotation, court-shaped grid, each player colored by which rotational
+// partnership she belongs to (Setter/Opposite, Middles+Libero,
+// Outsides/DS — see lineupSheetColors.ts for how that's derived), libero
+// and subs called out in plain text, plus a freeform Notes box for exactly
+// the things that don't fit the structured lineup data (players out,
+// flexible/maybe subs, forward-looking reminders).
 export function GameLineupSheetTab({ game }: { game: Game }) {
   const rosterIdsKey = game.rosterPlayerIds.join(',');
   const players = useLiveQuery(async () => {
@@ -54,7 +61,6 @@ export function GameLineupSheetTab({ game }: { game: Game }) {
   if (players === undefined || lineups === undefined) return <p className="text-gray-500">Loading…</p>;
 
   const playersById = new Map(players.map((p) => [p.id, p]));
-  const orderedPlayerIds = [...players].sort((a, b) => a.firstName.localeCompare(b.firstName)).map((p) => p.id);
 
   return (
     <div>
@@ -82,52 +88,41 @@ export function GameLineupSheetTab({ game }: { game: Game }) {
         {savingNotes && <p className="text-xs text-amber-700 mt-1">Saving…</p>}
       </div>
 
-      {players.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-5 print:mb-3">
-          {[...players]
-            .sort((a, b) => a.firstName.localeCompare(b.firstName))
-            .map((p) => (
-              <span
-                key={p.id}
-                className={`text-xs font-medium px-2 py-0.5 rounded-full border ${playerColorClass(p.id, orderedPlayerIds)}`}
-              >
-                {playerLabel(p)}
-              </span>
-            ))}
-        </div>
-      )}
-
       {lineups.length === 0 && (
         <p className="text-gray-500">No lineup set yet — build one in the Lineup tab first.</p>
       )}
 
       {lineups.map((lineup) => (
-        <SetSheet
-          key={lineup.id}
-          lineup={lineup}
-          playersById={playersById}
-          orderedPlayerIds={orderedPlayerIds}
-        />
+        <SetSheet key={lineup.id} lineup={lineup} playersById={playersById} />
       ))}
     </div>
   );
 }
 
-function SetSheet({
-  lineup,
-  playersById,
-  orderedPlayerIds,
-}: {
-  lineup: GameLineup;
-  playersById: Map<string, Player>;
-  orderedPlayerIds: string[];
-}) {
+function SetSheet({ lineup, playersById }: { lineup: GameLineup; playersById: Map<string, Player> }) {
   const sortedSubs = [...lineup.subs].sort((a, b) => a.effectiveRotation - b.effectiveRotation);
   const liberos = lineup.liberos.filter((l) => l.liberoPlayerId);
+  const pairGroups = computeRotationPairGroups(lineup);
+  const pairLabels = rotationPairLabels(lineup, playersById);
 
   return (
     <div className="mb-8 print:break-inside-avoid">
       <h2 className="text-lg font-bold text-gray-900 mb-2 pb-1 border-b-2 border-gray-900">Set {lineup.setNumber}</h2>
+
+      {pairLabels.some((names) => names.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2 text-xs text-gray-500">
+          <span className="font-medium text-gray-600">Rotation partners:</span>
+          {pairLabels.map(
+            (names, i) =>
+              names.length > 0 && (
+                <span key={i} className="inline-flex items-center gap-1">
+                  <span className={`h-3 w-3 rounded-full border ${PAIR_GROUP_COLOR_CLASSES[i]}`} />
+                  {names.join(' & ')}
+                </span>
+              )
+          )}
+        </div>
+      )}
 
       {liberos.length > 0 && (
         <p className="text-sm text-violet-900 bg-violet-50 border border-violet-200 rounded-lg px-3 py-1.5 mb-2 inline-block">
@@ -171,7 +166,7 @@ function SetSheet({
                       <div
                         key={zone}
                         className={`relative min-h-16 rounded-lg border-2 flex flex-col items-center justify-center text-center px-1 ${
-                          player ? playerColorClass(player.id, orderedPlayerIds) : 'border-gray-200 text-gray-300'
+                          player ? pairGroupColorClass(player.id, pairGroups) : 'border-gray-200 text-gray-300'
                         }`}
                       >
                         <span className="absolute top-0.5 left-1 text-[9px] font-medium opacity-60">{zone}</span>

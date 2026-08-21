@@ -4,10 +4,11 @@ import { useSupabaseQuery as useLiveQuery } from '../../lib/useSupabaseQuery';
 import type { Game } from '../../types';
 import { GameRosterTab } from './GameRosterTab';
 import { GameLineupTab } from './GameLineupTab';
+import { GameLineupSheetTab } from './GameLineupSheetTab';
 import { LiveStatsTab } from './LiveStatsTab';
 import { GameInsightsTab } from './GameInsightsTab';
 
-type SubTab = 'roster' | 'lineup' | 'live' | 'insights';
+type SubTab = 'roster' | 'lineup' | 'sheet' | 'live' | 'insights';
 
 export function GameDetailScreen({ gameId, onBack }: { gameId: string; onBack: () => void }) {
   const [tab, setTab] = useState<SubTab>('roster');
@@ -32,21 +33,25 @@ export function GameDetailScreen({ gameId, onBack }: { gameId: string; onBack: (
   const tabs: { key: SubTab; label: string }[] = [
     { key: 'roster', label: 'Roster' },
     { key: 'lineup', label: 'Lineup' },
+    { key: 'sheet', label: 'Sheet' },
     { key: 'live', label: 'Live' },
     { key: 'insights', label: 'Insights' },
   ];
 
   return (
     <div className="max-w-2xl mx-auto p-4">
-      <div className="flex items-center gap-2 mb-1">
+      <div className="flex items-center gap-2 mb-1 print:hidden">
         <button type="button" onClick={onBack} className="min-h-11 px-3 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 shrink-0">
           ‹ Games
         </button>
         <h1 className="text-xl font-bold text-gray-900 truncate">vs. {game.opponent}</h1>
       </div>
-      <p className="text-xs text-gray-500 mb-4">{game.date}</p>
+      <p className="text-xs text-gray-500 mb-4 print:hidden">{game.date}</p>
+      <h1 className="hidden print:block text-xl font-bold text-gray-900 mb-1">
+        vs. {game.opponent} — {game.date}
+      </h1>
 
-      <div className="flex border-b border-gray-200 mb-4">
+      <div className="flex border-b border-gray-200 mb-4 print:hidden">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -63,6 +68,7 @@ export function GameDetailScreen({ gameId, onBack }: { gameId: string; onBack: (
 
       {tab === 'roster' && <GameRosterTab game={game} />}
       {tab === 'lineup' && <GameLineupTab game={game} />}
+      {tab === 'sheet' && <GameLineupSheetTab game={game} />}
       {tab === 'live' && <LiveStatsTab game={game} />}
       {tab === 'insights' && <GameInsightsTab game={game} />}
     </div>

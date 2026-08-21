@@ -378,8 +378,8 @@ not tied to a live game/set.
 Top-level nav tab (`src/features/games/GameDayScreen.tsx`, routed from
 `App.tsx`) — separate from the Roster Builder's Lineup Simulator (that's a
 pre-game evaluation scratchpad; this is the live-game record). Team switcher
-+ game list → `GameDetailScreen.tsx` (Roster / Lineup / Live / Insights
-sub-tabs) once a game is selected.
++ game list → `GameDetailScreen.tsx` (Roster / Lineup / Sheet / Live /
+Insights sub-tabs) once a game is selected.
 
 - **Data**: `games`, `gameLineups`, `gameStatEvents` tables (`Game`/
   `GameLineup`/`GameStatEvent`/`GameStatType` in `types.ts`) — allow-all RLS
@@ -416,6 +416,31 @@ sub-tabs) once a game is selected.
   empty until edited. Fixed by stamping the not-yet-loaded placeholder
   (`phantomLineup()`) with `updatedAt: ''` instead, which sorts before any
   real ISO timestamp.
+- **Sheet tab** (`GameLineupSheetTab.tsx`): a read-only, all-rotations-at-a-
+  glance hand-off view — built for a coach who won't be at the game (e.g.
+  handing off to an assistant coach) and shouldn't have to click through the
+  Lineup tab's tap-to-edit UI live. Modeled directly on a coach's own
+  hand-drawn lineup sheet (photo shared directly): one card per rotation
+  (1-6) in the same front-row-4/3/2-back-row-5/6/1 court shape as the Lineup
+  tab, large bold name + jersey number per cell, libero and planned-subs
+  called out in plain text above the grid. **Every player gets a consistent
+  color** across every rotation/set in the game (`lineupSheetColors.ts`,
+  index-based off the roster sorted by name so it never changes game to
+  game) — a bonus visual cue for tracking one player at a glance, same
+  reasoning as the coach's own color-coded pens; color is never the only
+  differentiator, name/number are always printed too. Also hosts a **Notes**
+  textarea (freeform, saves onBlur to `games.notes` — a column that already
+  existed on `Game` but had no UI anywhere until this) for exactly what
+  doesn't fit the structured lineup data: players out, flexible "could sub
+  in" options, forward-looking reminders (e.g. "Olivia plays Set 2"). Seeded
+  from `game.notes` via a plain `useState` initializer, not resynced on
+  every prop change — same reasoning as `PracticePlanTab`'s `DrillLogEditor`
+  (don't clobber text the coach is mid-typing on a realtime refetch). A
+  "🖨 Print" button (`window.print()`) plus `print:hidden`/`print:block`
+  classes on `GameDetailScreen`'s chrome (nav, tab bar, back button) make
+  this the one tab that prints/exports-to-PDF cleanly without the rest of
+  the app around it. No new auth/access needed — an assistant coach uses the
+  same shared JV login as everyone else (see Auth section).
 - **Planned substitutions**: `GameLineup.subs` (`PlannedSub[]` in
   `types.ts`) — **scheduled by tapping the court, not a separate form**:
   on the Rotation 2-6 preview, tap the player leaving, then pick who's

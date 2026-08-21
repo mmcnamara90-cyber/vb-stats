@@ -378,8 +378,8 @@ not tied to a live game/set.
 Top-level nav tab (`src/features/games/GameDayScreen.tsx`, routed from
 `App.tsx`) — separate from the Roster Builder's Lineup Simulator (that's a
 pre-game evaluation scratchpad; this is the live-game record). Team switcher
-+ game list → `GameDetailScreen.tsx` (Roster / Lineup / Live / Insights
-sub-tabs) once a game is selected.
++ game list → `GameDetailScreen.tsx` (Roster / Lineup / Sheet / Live /
+Insights sub-tabs) once a game is selected.
 
 - **Data**: `games`, `gameLineups`, `gameStatEvents` tables (`Game`/
   `GameLineup`/`GameStatEvent`/`GameStatType` in `types.ts`) — allow-all RLS
@@ -416,6 +416,53 @@ sub-tabs) once a game is selected.
   empty until edited. Fixed by stamping the not-yet-loaded placeholder
   (`phantomLineup()`) with `updatedAt: ''` instead, which sorts before any
   real ISO timestamp.
+- **Sheet tab** (`GameLineupSheetTab.tsx`): a read-only, all-rotations-at-a-
+  glance hand-off view — built for a coach who won't be at the game (e.g.
+  handing off to an assistant coach) and shouldn't have to click through the
+  Lineup tab's tap-to-edit UI live. Modeled directly on a coach's own
+  hand-drawn lineup sheet (photo shared directly): one card per rotation
+  (1-6) in the same front-row-4/3/2-back-row-5/6/1 court shape as the Lineup
+  tab, large bold name + jersey number per cell, libero and planned-subs
+  called out in plain text above the grid. Also hosts a **Notes** textarea
+  (freeform, saves onBlur to `games.notes` — a column that already existed
+  on `Game` but had no UI anywhere until this) for exactly what doesn't fit
+  the structured lineup data: players out, flexible "could sub in" options,
+  forward-looking reminders (e.g. "Olivia plays Set 2"). Seeded from
+  `game.notes` via a plain `useState` initializer, not resynced on every
+  prop change — same reasoning as `PracticePlanTab`'s `DrillLogEditor`
+  (don't clobber text the coach is mid-typing on a realtime refetch). A
+  "🖨 Print" button (`window.print()`) plus `print:hidden`/`print:block`
+  classes on `GameDetailScreen`'s chrome (nav, tab bar, back button) make
+  this the one tab that prints/exports-to-PDF cleanly without the rest of
+  the app around it. No new auth/access needed — an assistant coach uses the
+  same shared JV login as everyone else (see Auth section).
+  - **Color-coded by rotational partnership, not by raw zone or by player
+    alone** (`lineupSheetColors.ts`) — took two corrections from the coach
+    to land on: a player's own color changing every rotation was wrong
+    (that was try 1); a fixed color per raw zone number was also wrong,
+    since which raw zone-pair a given partnership occupies shifts every
+    rotation (try 2). What's actually constant, and what her color-coded
+    pens were marking, is real volleyball structure: two players who start
+    3 zones apart (1&4, 2&5, 3&6) — Setter↔Opposite, the two Middles (plus
+    whichever Libero is covering one of them), the two Outsides (or
+    Outside↔DS) — stay exactly 3 zones apart at every rotation, always
+    landing on *some* opposite zone-pair together, just not the same raw
+    numbers each time. `computeRotationPairGroups()` derives this once
+    from the lineup's raw (Rotation 1) `zoneAssignments` — building a
+    `playerId -> 0|1|2` map, with subs inheriting the outgoing player's
+    group and each libero inheriting her shadowed starter's group — and
+    every rotation card looks a player's cell color up against that one
+    fixed map, never recomputing it per rotation. A per-set legend
+    (`rotationPairLabels()`) spells out the 3 actual name-pairs (e.g.
+    "Kenley & Natalie") so the coloring is self-explanatory instead of an
+    unexplained pattern.
+  - **`Player.jerseyNumber`**: the 12 core JV players' numbers are filled
+    in (from the team's official roster card, Fall 2026 — Columbine HS
+    Girls JV) and stable; the coach confirmed those don't change. Varsity
+    call-ups' numbers vary game to game and often aren't set — the Sheet
+    (and every other jersey-number display) already falls back to
+    name-only when `jerseyNumber` is null, so a missing number on a
+    call-up isn't a bug to chase.
 - **Planned substitutions**: `GameLineup.subs` (`PlannedSub[]` in
   `types.ts`) — **scheduled by tapping the court, not a separate form**:
   on the Rotation 2-6 preview, tap the player leaving, then pick who's

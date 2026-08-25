@@ -579,7 +579,7 @@ Insights sub-tabs) once a game is selected.
 - **Insights tab**: computed client-side from `gameStatEvents`, all in
   `gameStats.ts` — no AI/LLM call, documented in-app as computed. Also
   loads `gameLineups` now (needed for `computeAssistCredits`'s
-  back-row-setter lookup). Four sections, in order:
+  back-row-setter lookup). Five sections, in order:
   - ✅/👀 Per-player working-well/worth-a-look flags: `buildPlayerStatLine`/
     `buildInsights` — hitting % ((kills−errors)/attempts), serve-receive
     average, assist volume (credit-adjusted, not raw taps), threshold-based.
@@ -641,6 +641,27 @@ Insights sub-tabs) once a game is selected.
     point-scoring rate off a scoreboard. Worth being explicit about this
     with the coach if it ever comes up — flagged here so it isn't
     mistaken for real point-differential-by-rotation.
+  - 🎯 Set distribution + a full breakdown table: `buildSetDistribution`/
+    `buildSetDistributionInsights` — "how often does each hitter get set,
+    and how well does she convert it," distinct from the box score's plain
+    hitting% since it adds each hitter's *share* of the offense's total
+    tracked swings (touches = `attackAttempts`, the same denominator
+    `hittingPct` already uses). Setters are included, not excluded — a
+    setter's own dumps are legitimately part of "where the sets went,"
+    which is also how her own attacking stats show up here (this was the
+    ask that prompted the section: tracking attacks solo from a phone in
+    a 5-1, with kills auto-credited to her per rotation via
+    `computeAssistCredits` unless explicitly tapped otherwise — see Live
+    tab's Assist behavior above — while her *own* swings still need
+    tracking like any hitter's). Two threshold-based callouts, only fired
+    with ≥2 hitters having 3+ tracked swings: one hitter getting ≥40% of
+    sets (with ≥3 hitters getting touches, so it's not trivial with only
+    two options) flags either "leaning on her is working" (good, if she's
+    converting ≥30%) or "worth spreading distribution out" (watch, if
+    not); a hitter converting ≥30% on ≤15% of sets flags "worth setting
+    her more." Rule-based like everything else on this tab, not a real
+    LLM call — see "Real LLM-generated insights" note below, unchanged by
+    this: asked about directly, coach confirmed rule-based again.
   - Box score: shows a hitting line whenever attempts/kills/errors > 0
     (not gated by tagged position — a kill tapped with no matching
     Attempt still shows), an assists line (credit-adjusted) whenever > 0,

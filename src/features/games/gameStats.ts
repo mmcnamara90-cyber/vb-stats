@@ -296,6 +296,89 @@ export function buildRotationInsights(events: GameStatEvent[]): Insight[] {
   return insights;
 }
 
+// ===== Set distribution & conversion =====
+// "How often does each hitter get set, and how well does she convert it" —
+// distinct from the per-player hitting% already in PlayerGameStatLine
+// (that's just efficiency; this adds her share of the offense's total
+// tracked swings). Touches = attackAttempts, same denominator hittingPct
+// already uses, so a coach tapping Attempt on every swing (kills/errors
+// included) gets a consistent picture across both numbers. Setters are
+// included here too, not excluded — a setter's own dumps are legitimately
+// part of "where the offense's sets went."
+
+export interface SetDistributionLine {
+  player: Player;
+  touches: number; // attackAttempts — this player's tracked swings
+  sharePct: number; // touches / total touches across everyone with any
+  kills: number;
+  errors: number;
+  hittingPct?: number; // conversion rate — (kills - errors) / touches
+}
+
+export function buildSetDistribution(lines: PlayerGameStatLine[]): SetDistributionLine[] {
+  const withTouches = lines.filter((l) => l.attackAttempts > 0);
+  const total = withTouches.reduce((s, l) => s + l.attackAttempts, 0);
+  if (total === 0) return [];
+  return withTouches
+    .map((l) => ({
+      player: l.player,
+      touches: l.attackAttempts,
+      sharePct: l.attackAttempts / total,
+      kills: l.kills,
+      errors: l.attackErrors,
+      hittingPct: l.hittingPct,
+    }))
+    .sort((a, b) => b.touches - a.touches);
+}
+
+const HEAVY_SHARE_PCT = 0.4; // 40%+ of tracked sets going to one hitter
+const LOW_SHARE_PCT = 0.15; // under 15% share counts as under-utilized
+const MIN_HITTERS_FOR_HEAVY_FLAG = 3; // "getting 40% of sets" isn't news with only 2 options
+
+// Threshold-based, same spirit as buildInsights — flags a heavily-favored
+// target (good if she's converting, a watch item if she isn't) and any
+// under-used hitter who's actually converting well when she gets the ball.
+export function buildSetDistributionInsights(lines: SetDistributionLine[]): Insight[] {
+  const insights: Insight[] = [];
+  const qualifying = lines.filter((l) => l.touches >= MIN_ATTACK_ATTEMPTS);
+  if (qualifying.length < 2) return insights;
+
+  const name = (l: SetDistributionLine) => `${l.player.firstName} ${l.player.lastName}`;
+  const top = qualifying[0]; // buildSetDistribution already sorts by touches desc
+
+  if (top.sharePct >= HEAVY_SHARE_PCT && qualifying.length >= MIN_HITTERS_FOR_HEAVY_FLAG) {
+    if (top.hittingPct != null && top.hittingPct >= GOOD_HITTING_PCT) {
+      insights.push({
+        tone: 'good',
+        text: `${name(top)} is getting the lion's share of sets (${(top.sharePct * 100).toFixed(0)}%) and converting at ${(top.hittingPct * 100).toFixed(0)}% — leaning on her is working.`,
+      });
+    } else {
+      insights.push({
+        tone: 'watch',
+        text: `${name(top)} is getting ${(top.sharePct * 100).toFixed(0)}% of sets but ${
+          top.hittingPct != null ? `only converting ${(top.hittingPct * 100).toFixed(0)}%` : "hasn't converted much yet"
+        } — worth spreading distribution out more.`,
+      });
+    }
+  }
+
+  const underused = qualifying.find(
+    (l) =>
+      l.player.id !== top.player.id &&
+      l.hittingPct != null &&
+      l.hittingPct >= GOOD_HITTING_PCT &&
+      l.sharePct <= LOW_SHARE_PCT,
+  );
+  if (underused) {
+    insights.push({
+      tone: 'good',
+      text: `${name(underused)} is converting ${(underused.hittingPct! * 100).toFixed(0)}% on only ${(underused.sharePct * 100).toFixed(0)}% of sets — worth setting her more.`,
+    });
+  }
+
+  return insights;
+}
+
 // ===== Trending players (early vs. late within this game's recorded taps) =====
 // There's no cross-game history plumbed into this tab (Insights is scoped
 // to one game's gameStatEvents), so "rising/falling" reads as "better or

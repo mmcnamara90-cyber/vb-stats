@@ -9,6 +9,8 @@ import {
   buildRotationInsights,
   buildRotationOffenseLines,
   buildRotationServeReceiveLines,
+  buildSetDistribution,
+  buildSetDistributionInsights,
   computeAssistCredits,
   describePlayerTrend,
   type PlayerGameStatLine,
@@ -58,6 +60,9 @@ export function GameInsightsTab({ game }: { game: Game }) {
   const rotationHasAnyData = rotationOffense.some((r) => r.attempts > 0) || rotationServeReceive.some((r) => r.count > 0);
 
   const trends = buildPlayerTrends(rosterPlayers, events);
+
+  const setDistribution = buildSetDistribution(lines);
+  const setDistributionInsights = buildSetDistributionInsights(setDistribution);
 
   if (events.length === 0) {
     return <p className="text-sm text-gray-500">No stats recorded yet — head to the Live tab once the scrimmage starts.</p>;
@@ -162,6 +167,55 @@ export function GameInsightsTab({ game }: { game: Game }) {
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {setDistributionInsights.length > 0 && (
+        <div className="rounded-lg border border-teal-200 bg-teal-50 p-3 mb-3">
+          <h3 className="text-sm font-semibold text-teal-800 mb-2">🎯 Set distribution</h3>
+          <ul className="space-y-1.5">
+            {setDistributionInsights.map((i, idx) => (
+              <li key={idx} className="text-sm text-teal-900">
+                {i.tone === 'good' ? '✅' : '👀'} {i.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {setDistribution.length > 0 && (
+        <div className="rounded-lg border border-gray-200 overflow-hidden mb-4">
+          <div className="px-3 py-2 bg-gray-50 font-semibold text-gray-900 text-sm">
+            Set distribution & conversion (all sets)
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="text-gray-500 border-b border-gray-100">
+                  <th className="px-3 py-1.5 font-medium">Hitter</th>
+                  <th className="px-3 py-1.5 font-medium">Sets</th>
+                  <th className="px-3 py-1.5 font-medium">Share</th>
+                  <th className="px-3 py-1.5 font-medium">K</th>
+                  <th className="px-3 py-1.5 font-medium">E</th>
+                  <th className="px-3 py-1.5 font-medium">Conv%</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {setDistribution.map((l) => (
+                  <tr key={l.player.id} className="text-gray-800">
+                    <td className="px-3 py-1.5 font-semibold">
+                      {l.player.firstName} {l.player.lastName}
+                    </td>
+                    <td className="px-3 py-1.5">{l.touches}</td>
+                    <td className="px-3 py-1.5">{(l.sharePct * 100).toFixed(0)}%</td>
+                    <td className="px-3 py-1.5">{l.kills}</td>
+                    <td className="px-3 py-1.5">{l.errors}</td>
+                    <td className="px-3 py-1.5">{l.hittingPct != null ? `${(l.hittingPct * 100).toFixed(0)}%` : '—'}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
